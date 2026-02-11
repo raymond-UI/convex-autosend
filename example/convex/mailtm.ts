@@ -167,13 +167,24 @@ async function fetchToken(address: string, password: string): Promise<string> {
   return tokenResult.data.token;
 }
 
+/** The API may return a plain array or the legacy hydra:member envelope. */
+function normalizeMessageList(data: unknown): MailTmSummaryMessage[] {
+  if (Array.isArray(data)) return data as MailTmSummaryMessage[];
+  if (data && typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    const member = obj["hydra:member"] ?? obj.member ?? obj.data;
+    if (Array.isArray(member)) return member as MailTmSummaryMessage[];
+  }
+  return [];
+}
+
 async function listRemoteMessagesWithFreshToken(args: {
   address: string;
   password: string;
   token: string;
 }): Promise<{ token: string; messages: MailTmSummaryMessage[] }> {
   try {
-    const list = await apiJson<{ "hydra:member"?: MailTmSummaryMessage[] }>(
+    const list = await apiJson<unknown>(
       "/messages?page=1",
       { method: "GET" },
       args.token,
@@ -181,18 +192,18 @@ async function listRemoteMessagesWithFreshToken(args: {
 
     return {
       token: args.token,
-      messages: list.data["hydra:member"] ?? [],
+      messages: normalizeMessageList(list.data),
     };
   } catch (error) {
     const refreshed = await fetchToken(args.address, args.password);
-    const list = await apiJson<{ "hydra:member"?: MailTmSummaryMessage[] }>(
+    const list = await apiJson<unknown>(
       "/messages?page=1",
       { method: "GET" },
       refreshed,
     );
     return {
       token: refreshed,
-      messages: list.data["hydra:member"] ?? [],
+      messages: normalizeMessageList(list.data),
     };
   }
 }

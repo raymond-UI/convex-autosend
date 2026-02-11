@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import {
@@ -103,6 +103,75 @@ function truncate(str: string, max: number) {
 }
 
 // ---------------------------------------------------------------------------
+// Mail.tm Mercure SSE — real-time push for new messages
+// ---------------------------------------------------------------------------
+
+const MERCURE_HUB = "https://mercure.mail.tm/.well-known/mercure";
+
+function useMailTmLiveSync(
+  inboxes: Array<{ _id: Id<"mailtmInboxes">; accountId: string; token: string }> | undefined,
+  onNewMessage: (inboxId: Id<"mailtmInboxes">) => void,
+  enabled: boolean,
+) {
+  const onNewMessageRef = useRef(onNewMessage);
+  onNewMessageRef.current = onNewMessage;
+
+  // Stable key: only reconnect when inbox set or tokens change
+  const connectionKey = useMemo(
+    () => (inboxes ?? []).map((i) => `${i._id}:${i.token}`).join("|"),
+    [inboxes],
+  );
+
+  useEffect(() => {
+    if (!enabled || !inboxes || inboxes.length === 0) return;
+
+    const controllers: AbortController[] = [];
+
+    for (const inbox of inboxes) {
+      if (!inbox.accountId || !inbox.token) continue;
+
+      const ctrl = new AbortController();
+      controllers.push(ctrl);
+
+      const topic = `/accounts/${inbox.accountId}`;
+      const url = `${MERCURE_HUB}?topic=${encodeURIComponent(topic)}`;
+
+      (async () => {
+        try {
+          const res = await fetch(url, {
+            headers: {
+              Authorization: `Bearer ${inbox.token}`,
+              Accept: "text/event-stream",
+            },
+            signal: ctrl.signal,
+          });
+
+          if (!res.ok || !res.body) return;
+
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+
+          while (!ctrl.signal.aborted) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            // Any data frame means account activity (new message)
+            if (chunk.includes("data:")) {
+              onNewMessageRef.current(inbox._id);
+            }
+          }
+        } catch {
+          // SSE failed — cron polling handles it as fallback
+        }
+      })();
+    }
+
+    return () => controllers.forEach((c) => c.abort());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, connectionKey]);
+}
+
+// ---------------------------------------------------------------------------
 // Main console
 // ---------------------------------------------------------------------------
 
@@ -139,7 +208,7 @@ export default function AutoSendConsole() {
   const [defaultFrom, setDefaultFrom] = useState("");
   const [defaultReplyTo, setDefaultReplyTo] = useState("");
   const [sandboxTo, setSandboxTo] = useState("");
-  const [testMode, setTestMode] = useState(true);
+  const [testMode, setTestMode] = useState(false);
   const [providerCompatibilityMode, setProviderCompatibilityMode] = useState<
     "strict" | "lenient"
   >("strict");
@@ -245,6 +314,19 @@ export default function AutoSendConsole() {
       toast.error(err instanceof Error ? err.message : "Failed to sync secrets");
     }
   }, [syncSecretsFromEnv]);
+
+  const onToggleTestMode = useCallback(
+    async (enabled: boolean) => {
+      setTestMode(enabled);
+      try {
+        await setConfig({ testMode: enabled });
+        toast.success(enabled ? "Test mode ON \u2014 emails redirect to sandbox" : "Test mode OFF \u2014 emails go to real recipients");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to save test mode");
+      }
+    },
+    [setConfig],
+  );
 
   const onSaveConfig = useCallback(async () => {
     try {
@@ -364,6 +446,15 @@ export default function AutoSendConsole() {
     [syncInbox],
   );
 
+  // Real-time SSE sync — triggers when Mail.tm receives a new message
+  const onLiveMessage = useCallback(
+    (inboxId: Id<"mailtmInboxes">) => {
+      syncInbox({ inboxId }).catch(() => {});
+    },
+    [syncInbox],
+  );
+  useMailTmLiveSync(inboxes as any, onLiveMessage, view === "inbox");
+
   const onDeleteInbox = useCallback(
     async (inboxId: Id<"mailtmInboxes">) => {
       try {
@@ -437,8 +528,12 @@ export default function AutoSendConsole() {
             </div>
 
             {config?.testMode && (
-              <Badge variant="warning" className="text-[10px] ml-1">
-                Test Mode
+              <Badge
+                variant="warning"
+                className="text-[10px] ml-1 cursor-pointer"
+                onClick={() => setView("setup")}
+              >
+                Test Mode ON
               </Badge>
             )}
           </div>
@@ -557,7 +652,7 @@ export default function AutoSendConsole() {
             sandboxTo={sandboxTo}
             setSandboxTo={setSandboxTo}
             testMode={testMode}
-            setTestMode={setTestMode}
+            onToggleTestMode={onToggleTestMode}
             providerCompatibilityMode={providerCompatibilityMode}
             setProviderCompatibilityMode={setProviderCompatibilityMode}
             onSyncSecrets={onSyncSecrets}
@@ -1372,7 +1467,7 @@ function SetupView({
   sandboxTo,
   setSandboxTo,
   testMode,
-  setTestMode,
+  onToggleTestMode,
   providerCompatibilityMode,
   setProviderCompatibilityMode,
   onSyncSecrets,
@@ -1387,7 +1482,7 @@ function SetupView({
   sandboxTo: string;
   setSandboxTo: (v: string) => void;
   testMode: boolean;
-  setTestMode: (v: boolean) => void;
+  onToggleTestMode: (v: boolean) => void;
   providerCompatibilityMode: "strict" | "lenient";
   setProviderCompatibilityMode: (v: "strict" | "lenient") => void;
   onSyncSecrets: () => void;
@@ -1519,10 +1614,15 @@ function SetupView({
               <input
                 type="checkbox"
                 checked={testMode}
-                onChange={(e) => setTestMode(e.target.checked)}
+                onChange={(e) => onToggleTestMode(e.target.checked)}
                 className="rounded border-zinc-300 dark:border-zinc-600 accent-zinc-900 dark:accent-zinc-100"
               />
               <span className="text-zinc-700 dark:text-zinc-300">Test Mode</span>
+              {testMode && (
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                  ACTIVE \u2014 all emails redirect to sandbox
+                </span>
+              )}
             </label>
 
             <div className="flex items-center gap-2 text-sm">
