@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import {
@@ -18,6 +18,10 @@ import {
   Mail,
   X,
   ChevronRight,
+  AlertCircle,
+  ChevronDown,
+  Copy,
+  Check,
 } from "lucide-react";
 
 import { api } from "../../convex/_generated/api";
@@ -480,6 +484,7 @@ export default function AutoSendConsole() {
       <div className="flex-1 overflow-y-auto">
         {view === "send" && (
           <SendView
+            inboxes={inboxes}
             to={to}
             setTo={setTo}
             subject={subject}
@@ -558,6 +563,7 @@ export default function AutoSendConsole() {
 // ===========================================================================
 
 function SendView({
+  inboxes,
   to,
   setTo,
   subject,
@@ -580,6 +586,7 @@ function SendView({
   emailCounts,
   onCancel,
 }: {
+  inboxes: any[] | undefined;
   to: string;
   setTo: (v: string) => void;
   subject: string;
@@ -602,6 +609,24 @@ function SendView({
   emailCounts: Record<string, number>;
   onCancel: (emailId: string) => void;
 }) {
+  const [expandedErrors, setExpandedErrors] = useState<Set<string>>(new Set());
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const toggleError = useCallback((emailId: string) => {
+    setExpandedErrors((prev) => {
+      const next = new Set(prev);
+      if (next.has(emailId)) next.delete(emailId);
+      else next.add(emailId);
+      return next;
+    });
+  }, []);
+
+  const copyError = useCallback((emailId: string, error: string) => {
+    navigator.clipboard.writeText(error);
+    setCopiedId(emailId);
+    setTimeout(() => setCopiedId(null), 2000);
+  }, []);
+
   return (
     <div className="flex flex-col lg:flex-row h-full">
       {/* ── Compose sidebar ── */}
@@ -667,10 +692,27 @@ function SendView({
           ) : (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Recipients
-                  <span className="text-zinc-400 dark:text-zinc-500 ml-1">(comma or newline)</span>
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-zinc-500 dark:text-zinc-400">
+                    Recipients
+                    <span className="text-zinc-400 dark:text-zinc-500 ml-1">(comma or newline)</span>
+                  </Label>
+                  {inboxes && inboxes.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-[11px] px-2 text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300"
+                      onClick={() => {
+                        const addresses = inboxes.map((i: any) => i.address).join("\n");
+                        setBulkRecipients(addresses);
+                        toast.success(`Added ${inboxes.length} Mail.tm address${inboxes.length > 1 ? "es" : ""}`);
+                      }}
+                    >
+                      <Inbox className="size-3" />
+                      Use Mail.tm inboxes
+                    </Button>
+                  )}
+                </div>
                 <Textarea
                   value={bulkRecipients}
                   onChange={(e) => setBulkRecipients(e.target.value)}
@@ -797,53 +839,102 @@ function SendView({
               ) : (
                 demoEmails.map((entry, i) => {
                   const status = entry.status?.status ?? "queued";
+                  const lastError = entry.status?.lastError;
+                  const attemptCount = entry.status?.attemptCount ?? 0;
+                  const maxAttempts = entry.status?.maxAttempts ?? 0;
                   const canCancel = status === "queued" || status === "retrying";
+                  const hasError = lastError && (status === "failed" || status === "retrying");
                   return (
-                    <tr
-                      key={entry._id}
-                      className={cn(
-                        "border-b border-zinc-100 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors",
-                        i === 0 && "animate-fade-in",
-                      )}
-                    >
-                      <td className="py-2.5 px-4">
-                        <div className="flex items-center gap-2">
-                          <StatusIndicator status={status} />
-                          <Badge variant={statusBadgeVariant(status)} className="text-[11px]">
-                            {status}
-                          </Badge>
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-4 text-sm text-zinc-700 dark:text-zinc-300 max-w-[200px] truncate">
-                        {entry.recipient}
-                      </td>
-                      <td className="py-2.5 px-4 font-mono text-xs text-zinc-500 dark:text-zinc-400 hidden md:table-cell max-w-[160px] truncate">
-                        {truncate(entry.emailId, 20)}
-                      </td>
-                      <td className="py-2.5 px-4 text-xs text-zinc-400 dark:text-zinc-500 hidden lg:table-cell max-w-[160px] truncate">
-                        {entry.status?.providerMessageId
-                          ? truncate(entry.status.providerMessageId, 20)
-                          : "\u2014"}
-                      </td>
-                      <td className="py-2.5 px-4 hidden sm:table-cell">
-                        <Badge variant="secondary" className="text-[11px]">
-                          {entry.mode}
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 px-4 text-right">
-                        {canCancel && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => onCancel(entry.emailId)}
-                            className="h-7 text-xs text-zinc-500 hover:text-red-600 dark:hover:text-red-400"
-                          >
-                            <X className="size-3" />
-                            Cancel
-                          </Button>
+                    <React.Fragment key={entry._id}>
+                      <tr
+                        className={cn(
+                          "hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors",
+                          !hasError && "border-b border-zinc-100 dark:border-zinc-800/50",
+                          i === 0 && "animate-fade-in",
                         )}
-                      </td>
-                    </tr>
+                      >
+                        <td className="py-2.5 px-4">
+                          <div className="flex items-center gap-2">
+                            <StatusIndicator status={status} />
+                            <Badge variant={statusBadgeVariant(status)} className="text-[11px]">
+                              {status}
+                            </Badge>
+                            {attemptCount > 0 && (
+                              <span className="text-[10px] text-zinc-400 dark:text-zinc-500 tabular-nums">
+                                {attemptCount}/{maxAttempts}
+                              </span>
+                            )}
+                            {hasError && (
+                              <button
+                                onClick={() => toggleError(entry.emailId)}
+                                className="inline-flex items-center gap-0.5 text-[10px] text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 cursor-pointer"
+                              >
+                                <AlertCircle className="size-3" />
+                                <ChevronDown
+                                  className={cn(
+                                    "size-3 transition-transform",
+                                    expandedErrors.has(entry.emailId) && "rotate-180",
+                                  )}
+                                />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4 text-sm text-zinc-700 dark:text-zinc-300 max-w-[200px] truncate">
+                          {entry.recipient}
+                        </td>
+                        <td className="py-2.5 px-4 font-mono text-xs text-zinc-500 dark:text-zinc-400 hidden md:table-cell max-w-[160px] truncate">
+                          {truncate(entry.emailId, 20)}
+                        </td>
+                        <td className="py-2.5 px-4 text-xs text-zinc-400 dark:text-zinc-500 hidden lg:table-cell max-w-[160px] truncate">
+                          {entry.status?.providerMessageId
+                            ? truncate(entry.status.providerMessageId, 20)
+                            : "\u2014"}
+                        </td>
+                        <td className="py-2.5 px-4 hidden sm:table-cell">
+                          <Badge variant="secondary" className="text-[11px]">
+                            {entry.mode}
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-4 text-right">
+                          {canCancel && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => onCancel(entry.emailId)}
+                              className="h-7 text-xs text-zinc-500 hover:text-red-600 dark:hover:text-red-400"
+                            >
+                              <X className="size-3" />
+                              Cancel
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                      {hasError && expandedErrors.has(entry.emailId) && (
+                        <tr className="border-b border-zinc-100 dark:border-zinc-800/50 animate-fade-in">
+                          <td colSpan={6} className="px-4 pb-2.5 pt-0">
+                            <div className="flex items-start gap-2 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 px-3 py-2">
+                              <AlertCircle className="size-3.5 text-red-500 shrink-0 mt-0.5" />
+                              <p className="flex-1 text-xs text-red-700 dark:text-red-400 font-mono break-all leading-relaxed">
+                                {lastError}
+                              </p>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 shrink-0 text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-300"
+                                onClick={() => copyError(entry.emailId, lastError)}
+                              >
+                                {copiedId === entry.emailId ? (
+                                  <Check className="size-3" />
+                                ) : (
+                                  <Copy className="size-3" />
+                                )}
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })
               )}

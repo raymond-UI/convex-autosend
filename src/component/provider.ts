@@ -48,11 +48,15 @@ export type ProviderBulkResult =
       responseBody?: unknown;
     };
 
+function toEmailObject(address: string): { email: string } {
+  return { email: address };
+}
+
 function buildBody(payload: ProviderSendPayload) {
   return {
-    to: payload.to,
-    from: payload.from,
-    ...(payload.replyTo !== undefined ? { replyTo: payload.replyTo } : {}),
+    to: toEmailObject(payload.to[0]!),
+    from: toEmailObject(payload.from),
+    ...(payload.replyTo !== undefined ? { replyTo: toEmailObject(payload.replyTo) } : {}),
     ...(payload.subject !== undefined ? { subject: payload.subject } : {}),
     ...(payload.html !== undefined ? { html: payload.html } : {}),
     ...(payload.text !== undefined ? { text: payload.text } : {}),
