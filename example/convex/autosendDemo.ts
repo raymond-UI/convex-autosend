@@ -31,8 +31,6 @@ export const getConfig = query({
 
 export const setConfig = mutation({
   args: {
-    autosendApiKey: v.optional(v.string()),
-    webhookSecret: v.optional(v.string()),
     testMode: v.optional(v.boolean()),
     defaultFrom: v.optional(v.string()),
     defaultReplyTo: v.optional(v.string()),
@@ -44,13 +42,10 @@ export const setConfig = mutation({
     cleanupBatchSize: v.optional(v.number()),
     providerCompatibilityMode: v.optional(v.union(v.literal("strict"), v.literal("lenient"))),
     autosendBaseUrl: v.optional(v.string()),
-    replace: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     return await autosend.setConfig(ctx, {
       config: {
-        autosendApiKey: args.autosendApiKey,
-        webhookSecret: args.webhookSecret,
         testMode: args.testMode,
         defaultFrom: args.defaultFrom,
         defaultReplyTo: args.defaultReplyTo,
@@ -63,7 +58,6 @@ export const setConfig = mutation({
         providerCompatibilityMode: args.providerCompatibilityMode,
         autosendBaseUrl: args.autosendBaseUrl,
       },
-      replace: args.replace,
     });
   },
 });
