@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+:root {
+  --background: oklch(0.98 0.01 210);
+  --foreground: oklch(0.2 0.02 255);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.02 255);
+  --primary: oklch(0.56 0.22 262);
+  --primary-foreground: oklch(0.98 0.01 210);
+  --muted: oklch(0.95 0.02 250);
+  --muted-foreground: oklch(0.46 0.03 260);
+  --border: oklch(0.88 0.02 245);
+  --ring: oklch(0.62 0.2 264);
+}
+
+.dark {
+  --background: oklch(0.19 0.02 264);
+  --foreground: oklch(0.96 0.01 230);
+  --card: oklch(0.24 0.02 264);
+  --card-foreground: oklch(0.96 0.01 230);
+  --primary: oklch(0.73 0.18 291);
+  --primary-foreground: oklch(0.16 0.01 264);
+  --muted: oklch(0.28 0.02 264);
+  --muted-foreground: oklch(0.75 0.02 240);
+  --border: oklch(0.37 0.02 264);
+  --ring: oklch(0.68 0.18 290);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  color: var(--foreground);
+  background:
+    radial-gradient(1200px 600px at 20% -20%, color-mix(in oklab, var(--primary) 14%, transparent), transparent),
+    radial-gradient(900px 420px at 100% 0%, color-mix(in oklab, #36d3ff 14%, transparent), transparent),
+    var(--background);
+}
+
+.glass-card {
+  background: color-mix(in oklab, var(--card) 82%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.pixel-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--border) 30%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--border) 30%, transparent) 1px, transparent 1px);
+  background-size: 28px 28px;
+}

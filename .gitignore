@@ -6,6 +6,7 @@ node_modules
 # Convex generated files
 src/component/_generated/
 example/convex/_generated/
+example/.next/
 
 # Build outputs
 dist

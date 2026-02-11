@@ -3,12 +3,7 @@ import { v } from "convex/values";
 import { autosend } from "./email";
 
 async function ensureDemoEmail(
-  ctx: Parameters<(typeof mutation)["_constructor"]>[0]["handler"] extends (
-    ctx: infer C,
-    args: any,
-  ) => any
-    ? C
-    : never,
+  ctx: any,
   params: {
     emailId: string;
     recipient: string;
@@ -19,7 +14,7 @@ async function ensureDemoEmail(
 ) {
   const existing = await ctx.db
     .query("demoEmails")
-    .withIndex("by_emailId", (q) => q.eq("emailId", params.emailId))
+    .withIndex("by_emailId", (q: any) => q.eq("emailId", params.emailId))
     .unique();
 
   if (!existing) {
@@ -90,7 +85,7 @@ export const sendEmail = mutation({
       idempotencyKey: args.idempotencyKey,
     });
 
-    await ensureDemoEmail(ctx as any, {
+    await ensureDemoEmail(ctx, {
       emailId: result.emailId,
       recipient: args.to,
       subject: args.subject,
@@ -126,7 +121,7 @@ export const sendBulk = mutation({
     for (let index = 0; index < result.emailIds.length; index += 1) {
       const emailId = result.emailIds[index]!;
       const recipient = recipients[index] ?? recipients[0] ?? "unknown";
-      await ensureDemoEmail(ctx as any, {
+      await ensureDemoEmail(ctx, {
         emailId,
         recipient,
         subject: args.subject,
