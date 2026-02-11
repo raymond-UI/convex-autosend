@@ -11,6 +11,14 @@ crons.interval(
   {},
 );
 
+// Sync all Mail.tm inboxes every 30 seconds so delivered emails show up.
+crons.interval(
+  "sync mailtm inboxes",
+  { seconds: 30 },
+  api.mailtm.syncAllInboxes,
+  {},
+);
+
 // Clean up old terminal emails and recover abandoned sends once a day.
 crons.daily(
   "cleanup old emails",

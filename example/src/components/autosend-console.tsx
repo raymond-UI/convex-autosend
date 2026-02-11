@@ -131,6 +131,7 @@ export default function AutoSendConsole() {
   const cleanupAbandonedEmails = useAction(api.autosendDemo.cleanupAbandonedEmails);
   const createInbox = useAction(api.mailtm.createInbox);
   const syncInbox = useAction(api.mailtm.syncInbox);
+  const syncAllInboxes = useAction(api.mailtm.syncAllInboxes);
   const fetchMessage = useAction(api.mailtm.fetchMessage);
   const deleteInbox = useMutation(api.mailtm.deleteInbox);
 
@@ -191,6 +192,16 @@ export default function AutoSendConsole() {
       setTo(inboxes[0]!.address);
     }
   }, [inboxes, selectedInboxId, to]);
+
+  // Auto-sync inboxes when switching to the inbox tab
+  useEffect(() => {
+    if (view !== "inbox") return;
+    if (!inboxes || inboxes.length === 0) return;
+    syncAllInboxes({}).catch(() => {
+      // silent — cron will catch up
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
 
   const selectedMessage = useMemo(
     () => messages?.find((m) => m.messageId === selectedMessageId) ?? null,

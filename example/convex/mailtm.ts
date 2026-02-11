@@ -1,4 +1,4 @@
-import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -451,6 +451,87 @@ export const upsertInboxInternal = internalMutation({
       createdAt: args.now,
       updatedAt: args.now,
     });
+  },
+});
+
+export const listInboxIdsInternal = internalQuery({
+  args: {},
+  returns: v.array(v.id("mailtmInboxes")),
+  handler: async (ctx) => {
+    const inboxes = await ctx.db
+      .query("mailtmInboxes")
+      .withIndex("by_createdAt")
+      .collect();
+    return inboxes.map((inbox) => inbox._id);
+  },
+});
+
+export const syncAllInboxes = action({
+  args: {},
+  handler: async (ctx): Promise<{ syncedInboxes: number; totalMessages: number }> => {
+    const inboxIds = await ctx.runQuery(internal.mailtm.listInboxIdsInternal, {});
+    let totalMessages = 0;
+
+    for (const inboxId of inboxIds) {
+      try {
+        const result = await ctx.runAction(internal.mailtm.syncInboxInternal, { inboxId });
+        totalMessages += result.syncedCount;
+      } catch {
+        // Individual inbox sync failure shouldn't block others
+      }
+    }
+
+    return { syncedInboxes: inboxIds.length, totalMessages };
+  },
+});
+
+export const syncInboxInternal = internalAction({
+  args: {
+    inboxId: v.id("mailtmInboxes"),
+  },
+  returns: v.object({
+    inboxId: v.id("mailtmInboxes"),
+    syncedCount: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const inbox = await ctx.runQuery(internal.mailtm.getInboxInternal, {
+      inboxId: args.inboxId,
+    });
+
+    if (!inbox) {
+      return { inboxId: args.inboxId, syncedCount: 0 };
+    }
+
+    const remote = await listRemoteMessagesWithFreshToken({
+      address: inbox.address,
+      password: inbox.password,
+      token: inbox.token,
+    });
+
+    await ctx.runMutation(internal.mailtm.setInboxTokenInternal, {
+      inboxId: args.inboxId,
+      token: remote.token,
+      now: Date.now(),
+    });
+
+    await ctx.runMutation(internal.mailtm.upsertMessageSummariesInternal, {
+      inboxId: args.inboxId,
+      messages: remote.messages.map((message) => ({
+        messageId: message.id,
+        fromAddress: message.from?.address,
+        fromName: message.from?.name,
+        subject: message.subject,
+        intro: message.intro,
+        seen: Boolean(message.seen),
+        receivedAt: messageTimestamp(message.createdAt),
+      })),
+      now: Date.now(),
+    });
+
+    return {
+      inboxId: args.inboxId,
+      syncedCount: remote.messages.length,
+    };
   },
 });
 
