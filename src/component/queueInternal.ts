@@ -95,6 +95,10 @@ export const processDueQueue = internalAction({
     let failedCount = 0;
 
     for (const candidate of due) {
+      // claimQueuedEmail is an atomic mutation that checks the email is still
+      // in a claimable state (queued/retrying) before transitioning to "sending".
+      // Convex serializable mutations guarantee that concurrent claims on the
+      // same email are linearized — only one will succeed, preventing duplicate sends.
       const claimed = await ctx.runMutation(internal.emails.claimQueuedEmail, {
         emailId: candidate.emailId,
         now: Date.now(),
@@ -103,71 +107,108 @@ export const processDueQueue = internalAction({
 
       processedCount += 1;
 
-      const payload = buildProviderPayload({
-        email: claimed,
-        globals,
-      });
+      // Wrap per-email processing in try-catch so that an unhandled exception
+      // after claiming doesn't leave the email permanently stuck in "sending".
+      try {
+        const payload = buildProviderPayload({
+          email: claimed,
+          globals,
+        });
 
-      if ("error" in payload) {
-        await ctx.runMutation(internal.emails.markSendFailure, {
+        if ("error" in payload) {
+          await ctx.runMutation(internal.emails.markSendFailure, {
+            emailId: claimed.emailId,
+            error: payload.error,
+            retryable: false,
+            now: Date.now(),
+          });
+          failedCount += 1;
+          continue;
+        }
+
+        if (!globals.autosendApiKey) {
+          await ctx.runMutation(internal.emails.markSendFailure, {
+            emailId: claimed.emailId,
+            error: "AutoSend API key is not configured.",
+            retryable: false,
+            now: Date.now(),
+          });
+          failedCount += 1;
+          continue;
+        }
+
+        const result = await sendOne(payload, {
+          apiKey: globals.autosendApiKey,
+          baseUrl: globals.autosendBaseUrl,
+          compatibilityMode: globals.providerCompatibilityMode,
+        });
+
+        if (result.ok) {
+          await ctx.runMutation(internal.emails.markSendSuccess, {
+            emailId: claimed.emailId,
+            providerMessageId: result.providerMessageId,
+            providerStatus: result.providerStatus,
+            now: Date.now(),
+          });
+          sentCount += 1;
+          continue;
+        }
+
+        const delayIndex = Math.min(
+          claimed.attemptCount,
+          Math.max(0, globals.retryDelaysMs.length - 1),
+        );
+        const nextAttemptAt =
+          result.retryable && globals.retryDelaysMs.length > 0
+            ? Date.now() + globals.retryDelaysMs[delayIndex]!
+            : undefined;
+
+        const failureStatus = await ctx.runMutation(internal.emails.markSendFailure, {
           emailId: claimed.emailId,
-          error: payload.error,
-          retryable: false,
+          error: result.error,
+          retryable: result.retryable,
+          nextAttemptAt,
           now: Date.now(),
         });
-        failedCount += 1;
-        continue;
-      }
 
-      if (!globals.autosendApiKey) {
-        await ctx.runMutation(internal.emails.markSendFailure, {
-          emailId: claimed.emailId,
-          error: "AutoSend API key is not configured.",
-          retryable: false,
-          now: Date.now(),
-        });
-        failedCount += 1;
-        continue;
-      }
+        if (failureStatus === "retrying") {
+          retriedCount += 1;
+        } else {
+          failedCount += 1;
+        }
+      } catch (error: unknown) {
+        // If anything unexpected goes wrong after claiming, mark the email as
+        // retryable so it re-enters the queue instead of staying stuck in "sending".
+        const errorMsg =
+          error instanceof Error ? error.message : "Unexpected error during send processing";
+        try {
+          const delayIndex = Math.min(
+            claimed.attemptCount,
+            Math.max(0, globals.retryDelaysMs.length - 1),
+          );
+          const retryDelay =
+            globals.retryDelaysMs.length > 0
+              ? globals.retryDelaysMs[delayIndex]!
+              : 30_000;
 
-      const result = await sendOne(payload, {
-        apiKey: globals.autosendApiKey,
-        baseUrl: globals.autosendBaseUrl,
-        compatibilityMode: globals.providerCompatibilityMode,
-      });
+          const failureStatus = await ctx.runMutation(internal.emails.markSendFailure, {
+            emailId: claimed.emailId,
+            error: errorMsg,
+            retryable: true,
+            nextAttemptAt: Date.now() + retryDelay,
+            now: Date.now(),
+          });
 
-      if (result.ok) {
-        await ctx.runMutation(internal.emails.markSendSuccess, {
-          emailId: claimed.emailId,
-          providerMessageId: result.providerMessageId,
-          providerStatus: result.providerStatus,
-          now: Date.now(),
-        });
-        sentCount += 1;
-        continue;
-      }
-
-      const delayIndex = Math.min(
-        claimed.attemptCount,
-        Math.max(0, globals.retryDelaysMs.length - 1),
-      );
-      const nextAttemptAt =
-        result.retryable && globals.retryDelaysMs.length > 0
-          ? Date.now() + globals.retryDelaysMs[delayIndex]!
-          : undefined;
-
-      const failureStatus = await ctx.runMutation(internal.emails.markSendFailure, {
-        emailId: claimed.emailId,
-        error: result.error,
-        retryable: result.retryable,
-        nextAttemptAt,
-        now: Date.now(),
-      });
-
-      if (failureStatus === "retrying") {
-        retriedCount += 1;
-      } else {
-        failedCount += 1;
+          if (failureStatus === "retrying") {
+            retriedCount += 1;
+          } else {
+            failedCount += 1;
+          }
+        } catch {
+          // If even markSendFailure fails, the abandoned email recovery cron
+          // will eventually reclaim this email from "sending" state.
+          failedCount += 1;
+        }
       }
     }
 

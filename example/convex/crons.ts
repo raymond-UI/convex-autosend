@@ -19,7 +19,17 @@ crons.interval(
   {},
 );
 
-// Clean up old terminal emails and recover abandoned sends once a day.
+// Recover emails stuck in "sending" state (abandoned) every 15 minutes.
+// Emails that have been in "sending" for longer than the stale threshold
+// (default 15 min) are either retried or marked as failed.
+crons.interval(
+  "recover abandoned emails",
+  { minutes: 15 },
+  api.autosendDemo.cleanupAbandonedEmails,
+  {},
+);
+
+// Clean up old terminal emails once a day.
 crons.daily(
   "cleanup old emails",
   { hourUTC: 3, minuteUTC: 0 },

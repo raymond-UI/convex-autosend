@@ -74,6 +74,13 @@ export const storeEventAndApply = internalMutation({
       patch.providerMessageId = args.providerMessageId;
     }
 
+    // Canceled emails are a terminal state — record the provider event for
+    // observability (providerStatus + providerMessageId) but never change status.
+    if (email.status === "canceled") {
+      await ctx.db.patch(email._id, patch as any);
+      return null;
+    }
+
     if (args.eventType === "email.sent" || args.eventType === "email.delivered") {
       if (email.status === "queued" || email.status === "retrying" || email.status === "sending") {
         patch.status = "sent";
@@ -87,7 +94,7 @@ export const storeEventAndApply = internalMutation({
       args.eventType === "email.bounced" ||
       args.eventType === "email.spam_reported"
     ) {
-      if (email.status !== "failed" && email.status !== "canceled") {
+      if (email.status !== "failed") {
         patch.status = "failed";
         patch.failedAt = args.occurredAt;
         patch.lastError = `Webhook event: ${args.eventType}`;
