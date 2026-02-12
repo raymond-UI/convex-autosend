@@ -22,8 +22,10 @@ export type QueueResult = {
 
 export type AttachmentItem = {
   filename: string;
-  content: string;
-  contentType: string;
+  content?: string;
+  fileUrl?: string;
+  contentType?: string;
+  description?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -163,6 +165,12 @@ export function EmailDetailRow({ emailId, entry }: { emailId: string; entry: any
           mono
         />
         {status?.replyTo && <DetailItem label="Reply-To" value={status.replyTo} mono />}
+        {status?.cc && status.cc.length > 0 && (
+          <DetailItem label="CC" value={status.cc.map((r: any) => r.name ? `${r.name} <${r.email}>` : r.email).join(", ")} mono />
+        )}
+        {status?.bcc && status.bcc.length > 0 && (
+          <DetailItem label="BCC" value={status.bcc.map((r: any) => r.name ? `${r.name} <${r.email}>` : r.email).join(", ")} mono />
+        )}
         {status?.subject && <DetailItem label="Subject" value={status.subject} />}
         {status?.templateId && <DetailItem label="Template ID" value={status.templateId} mono />}
         <DetailItem label="Provider ID" value={status?.providerMessageId ?? "\u2014"} mono />

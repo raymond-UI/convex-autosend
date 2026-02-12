@@ -1,9 +1,14 @@
-import type { Attachment, ProviderCompatibilityMode } from "./types";
+import type { Attachment, EmailRecipient, ProviderCompatibilityMode } from "./types";
 
 export type ProviderSendPayload = {
   to: string[];
+  toName?: string;
   from: string;
+  fromName?: string;
   replyTo?: string;
+  replyToName?: string;
+  cc?: EmailRecipient[];
+  bcc?: EmailRecipient[];
   subject?: string;
   html?: string;
   text?: string;
@@ -11,6 +16,7 @@ export type ProviderSendPayload = {
   dynamicData?: unknown;
   attachments?: Attachment[];
   metadata?: unknown;
+  unsubscribeGroupId?: string;
 };
 
 export type ProviderOptions = {
@@ -48,15 +54,26 @@ export type ProviderBulkResult =
       responseBody?: unknown;
     };
 
-function toEmailObject(address: string): { email: string } {
+function toEmailObject(address: string, name?: string): { email: string; name?: string } {
+  if (name && name.trim().length > 0) {
+    return { email: address, name: name.trim() };
+  }
   return { email: address };
 }
 
 function buildBody(payload: ProviderSendPayload) {
   return {
-    to: toEmailObject(payload.to[0]!),
-    from: toEmailObject(payload.from),
-    ...(payload.replyTo !== undefined ? { replyTo: toEmailObject(payload.replyTo) } : {}),
+    to: toEmailObject(payload.to[0]!, payload.toName),
+    from: toEmailObject(payload.from, payload.fromName),
+    ...(payload.replyTo !== undefined
+      ? { replyTo: toEmailObject(payload.replyTo, payload.replyToName) }
+      : {}),
+    ...(payload.cc !== undefined && payload.cc.length > 0
+      ? { cc: payload.cc.map((r) => toEmailObject(r.email, r.name)) }
+      : {}),
+    ...(payload.bcc !== undefined && payload.bcc.length > 0
+      ? { bcc: payload.bcc.map((r) => toEmailObject(r.email, r.name)) }
+      : {}),
     ...(payload.subject !== undefined ? { subject: payload.subject } : {}),
     ...(payload.html !== undefined ? { html: payload.html } : {}),
     ...(payload.text !== undefined ? { text: payload.text } : {}),
@@ -66,13 +83,18 @@ function buildBody(payload: ProviderSendPayload) {
       ? {
           attachments: payload.attachments.map((a) => ({
             fileName: a.filename,
-            content: a.content,
+            ...(a.content !== undefined ? { content: a.content } : {}),
+            ...(a.fileUrl !== undefined ? { fileUrl: a.fileUrl } : {}),
             ...(a.contentType !== undefined ? { contentType: a.contentType } : {}),
             ...(a.disposition !== undefined ? { disposition: a.disposition } : {}),
+            ...(a.description !== undefined ? { description: a.description } : {}),
           })),
         }
       : {}),
     ...(payload.metadata !== undefined ? { metadata: payload.metadata } : {}),
+    ...(payload.unsubscribeGroupId !== undefined
+      ? { unsubscribeGroupId: payload.unsubscribeGroupId }
+      : {}),
   };
 }
 

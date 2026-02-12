@@ -293,6 +293,168 @@ describe("autosend component", () => {
     expect(status).toBeNull();
   });
 
+  test("provider payload includes display names, CC, BCC, and unsubscribeGroupId", async () => {
+    const t = makeTest();
+
+    await t.mutation("config:setConfig", {
+      config: {
+        testMode: false,
+        autosendApiKey: "as_test_key",
+        defaultFrom: "noreply@example.com",
+      },
+    });
+
+    let capturedBody: any;
+    setMockFetch(async (_input, init) => {
+      capturedBody = JSON.parse(init?.body as string);
+      return new Response(JSON.stringify({ emailId: "provider_names" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await t.mutation("emails:sendEmail", {
+      to: ["user@example.com"],
+      toName: "Jane",
+      fromName: "Support",
+      replyTo: "replies@example.com",
+      replyToName: "Reply Handler",
+      subject: "Names Test",
+      html: "<p>Hi</p>",
+      cc: [{ email: "cc@example.com", name: "CC Person" }],
+      bcc: [{ email: "bcc@example.com" }],
+      unsubscribeGroupId: "unsub-123",
+    });
+
+    await t.action("queue:processQueue", {});
+
+    expect(capturedBody.to).toEqual({ email: "user@example.com", name: "Jane" });
+    expect(capturedBody.from).toEqual({ email: "noreply@example.com", name: "Support" });
+    expect(capturedBody.replyTo).toEqual({ email: "replies@example.com", name: "Reply Handler" });
+    expect(capturedBody.cc).toEqual([{ email: "cc@example.com", name: "CC Person" }]);
+    expect(capturedBody.bcc).toEqual([{ email: "bcc@example.com" }]);
+    expect(capturedBody.unsubscribeGroupId).toBe("unsub-123");
+  });
+
+  test("test mode strips CC and BCC from provider payload", async () => {
+    const t = makeTest();
+
+    await t.mutation("config:setConfig", {
+      config: {
+        testMode: true,
+        autosendApiKey: "as_test_key",
+        defaultFrom: "noreply@example.com",
+        sandboxTo: ["sandbox@example.com"],
+      },
+    });
+
+    let capturedBody: any;
+    setMockFetch(async (_input, init) => {
+      capturedBody = JSON.parse(init?.body as string);
+      return new Response(JSON.stringify({ emailId: "provider_cc_strip" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await t.mutation("emails:sendEmail", {
+      to: ["user@example.com"],
+      subject: "Test CC",
+      html: "<p>Hi</p>",
+      cc: [{ email: "cc@example.com" }],
+      bcc: [{ email: "bcc@example.com" }],
+    });
+
+    await t.action("queue:processQueue", {});
+
+    expect(capturedBody.to.email).toBe("sandbox@example.com");
+    expect(capturedBody.cc).toBeUndefined();
+    expect(capturedBody.bcc).toBeUndefined();
+  });
+
+  test("attachment with fileUrl instead of content", async () => {
+    const t = makeTest();
+
+    await t.mutation("config:setConfig", {
+      config: {
+        testMode: false,
+        autosendApiKey: "as_test_key",
+        defaultFrom: "noreply@example.com",
+      },
+    });
+
+    let capturedBody: any;
+    setMockFetch(async (_input, init) => {
+      capturedBody = JSON.parse(init?.body as string);
+      return new Response(JSON.stringify({ emailId: "provider_url_att" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await t.mutation("emails:sendEmail", {
+      to: ["user@example.com"],
+      subject: "Attachment Test",
+      html: "<p>See attached</p>",
+      attachments: [
+        {
+          filename: "report.pdf",
+          fileUrl: "https://cdn.example.com/report.pdf",
+          contentType: "application/pdf",
+          description: "Monthly report",
+        },
+      ],
+    });
+
+    await t.action("queue:processQueue", {});
+
+    expect(capturedBody.attachments[0].fileName).toBe("report.pdf");
+    expect(capturedBody.attachments[0].fileUrl).toBe("https://cdn.example.com/report.pdf");
+    expect(capturedBody.attachments[0].content).toBeUndefined();
+    expect(capturedBody.attachments[0].description).toBe("Monthly report");
+  });
+
+  test("attachment requires either content or fileUrl", async () => {
+    const t = makeTest();
+
+    await t.mutation("config:setConfig", {
+      config: { testMode: false, defaultFrom: "noreply@example.com" },
+    });
+
+    await expect(
+      t.mutation("emails:sendEmail", {
+        to: ["user@example.com"],
+        subject: "Bad Attachment",
+        html: "<p>Hi</p>",
+        attachments: [{ filename: "file.txt" }],
+      }),
+    ).rejects.toThrow(/requires either content.*or fileUrl/);
+  });
+
+  test("different CC produces different idempotency hash", async () => {
+    const t = makeTest();
+
+    await t.mutation("config:setConfig", {
+      config: { testMode: false, defaultFrom: "noreply@example.com" },
+    });
+
+    const first = await t.mutation("emails:sendEmail", {
+      to: ["user@example.com"],
+      subject: "Same subject",
+      html: "<p>Hi</p>",
+    });
+
+    const second = await t.mutation("emails:sendEmail", {
+      to: ["user@example.com"],
+      subject: "Same subject",
+      html: "<p>Hi</p>",
+      cc: [{ email: "cc@example.com" }],
+    });
+
+    expect(first.emailId).not.toBe(second.emailId);
+    expect(second.deduped).toBe(false);
+  });
+
   test("config merge and replace semantics", async () => {
     const t = makeTest();
 

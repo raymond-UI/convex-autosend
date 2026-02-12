@@ -12,6 +12,7 @@ export type { ComponentApi } from "../component/_generated/component.js";
 export type {
   Attachment,
   ConfigUpdate,
+  EmailRecipient,
   EmailStatus,
   ProviderCompatibilityMode,
   SafeConfig,
@@ -24,6 +25,7 @@ export {
   cancelResultValidator,
   cleanupResultValidator,
   configUpdateValidator,
+  emailRecipientValidator,
   emailStatusValidator,
   processQueueResultValidator,
   providerCompatibilityModeValidator,
@@ -56,8 +58,13 @@ export class AutoSend {
     ctx: MutationCtx,
     args: {
       to: string[];
+      toName?: string;
       from?: string;
+      fromName?: string;
       replyTo?: string;
+      replyToName?: string;
+      cc?: Array<{ email: string; name?: string }>;
+      bcc?: Array<{ email: string; name?: string }>;
       subject?: string;
       html?: string;
       text?: string;
@@ -65,12 +72,15 @@ export class AutoSend {
       dynamicData?: unknown;
       attachments?: Array<{
         filename: string;
-        content: string;
+        content?: string;
+        fileUrl?: string;
         contentType?: string;
         disposition?: string;
+        description?: string;
       }>;
       metadata?: unknown;
       idempotencyKey?: string;
+      unsubscribeGroupId?: string;
     },
   ) {
     return await ctx.runMutation(this.component.emails.sendEmail, args);
@@ -81,7 +91,11 @@ export class AutoSend {
     args: {
       recipients: string[];
       from?: string;
+      fromName?: string;
       replyTo?: string;
+      replyToName?: string;
+      cc?: Array<{ email: string; name?: string }>;
+      bcc?: Array<{ email: string; name?: string }>;
       subject?: string;
       html?: string;
       text?: string;
@@ -89,12 +103,15 @@ export class AutoSend {
       dynamicData?: unknown;
       attachments?: Array<{
         filename: string;
-        content: string;
+        content?: string;
+        fileUrl?: string;
         contentType?: string;
         disposition?: string;
+        description?: string;
       }>;
       metadata?: unknown;
       idempotencyKeyPrefix?: string;
+      unsubscribeGroupId?: string;
     },
   ) {
     return await ctx.runMutation(this.component.emails.sendBulk, args);

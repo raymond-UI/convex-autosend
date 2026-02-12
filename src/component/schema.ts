@@ -2,6 +2,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
   attachmentValidator,
+  emailRecipientValidator,
   emailStatusValidator,
   providerCompatibilityModeValidator,
 } from "./types";
@@ -12,8 +13,13 @@ export default defineSchema({
     idempotencyKey: v.string(),
     status: emailStatusValidator,
     to: v.array(v.string()),
+    toName: v.optional(v.string()),
     from: v.string(),
+    fromName: v.optional(v.string()),
     replyTo: v.optional(v.string()),
+    replyToName: v.optional(v.string()),
+    cc: v.optional(v.array(emailRecipientValidator)),
+    bcc: v.optional(v.array(emailRecipientValidator)),
     subject: v.optional(v.string()),
     html: v.optional(v.string()),
     text: v.optional(v.string()),
@@ -21,6 +27,7 @@ export default defineSchema({
     dynamicData: v.optional(v.any()),
     attachments: v.optional(v.array(attachmentValidator)),
     metadata: v.optional(v.any()),
+    unsubscribeGroupId: v.optional(v.string()),
     attemptCount: v.number(),
     maxAttempts: v.number(),
     nextAttemptAt: v.number(),

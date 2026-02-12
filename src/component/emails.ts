@@ -16,6 +16,24 @@ function sanitizeRecipients(recipients: string[]): string[] {
   return Array.from(new Set(recipients.map((recipient) => recipient.trim()).filter(Boolean)));
 }
 
+function assertAttachmentsValid(
+  attachments?: Array<{ content?: string; fileUrl?: string; filename: string }>,
+) {
+  if (!attachments) return;
+  for (const att of attachments) {
+    if (!att.content && !att.fileUrl) {
+      throw new Error(
+        `Attachment "${att.filename}" requires either content (base64) or fileUrl.`,
+      );
+    }
+    if (att.content && att.fileUrl) {
+      throw new Error(
+        `Attachment "${att.filename}" must provide either content or fileUrl, not both.`,
+      );
+    }
+  }
+}
+
 function assertPayloadValid(params: {
   from?: string;
   subject?: string;
@@ -96,14 +114,20 @@ async function resolveIdempotencyKey(args: {
 function buildIdempotencyPayload(args: SendEmailArgs & { from: string; to: string[] }) {
   return {
     to: args.to,
+    toName: args.toName,
     from: args.from,
+    fromName: args.fromName,
     replyTo: args.replyTo,
+    replyToName: args.replyToName,
+    cc: args.cc,
+    bcc: args.bcc,
     subject: args.subject,
     html: args.html,
     text: args.text,
     templateId: args.templateId,
     dynamicData: args.dynamicData,
     attachments: args.attachments,
+    unsubscribeGroupId: args.unsubscribeGroupId,
   };
 }
 
@@ -126,6 +150,7 @@ export const sendEmail = mutation({
     const from = args.from ?? globals.defaultFrom;
     const replyTo = args.replyTo ?? globals.defaultReplyTo;
 
+    assertAttachmentsValid(args.attachments);
     assertPayloadValid({
       from,
       subject: args.subject,
@@ -159,8 +184,13 @@ export const sendEmail = mutation({
       idempotencyKey,
       status: "queued",
       to,
+      toName: args.toName,
       from: from!,
+      fromName: args.fromName,
       replyTo,
+      replyToName: args.replyToName,
+      cc: args.cc,
+      bcc: args.bcc,
       subject: args.subject,
       html: args.html,
       text: args.text,
@@ -168,6 +198,7 @@ export const sendEmail = mutation({
       dynamicData: args.dynamicData,
       attachments: args.attachments,
       metadata: args.metadata,
+      unsubscribeGroupId: args.unsubscribeGroupId,
       attemptCount: 0,
       maxAttempts: globals.maxAttempts,
       nextAttemptAt: now,
@@ -186,13 +217,18 @@ function buildBulkRecipientPayload(args: SendBulkArgs & { from: string; recipien
   return {
     to: [args.recipient],
     from: args.from,
+    fromName: args.fromName,
     replyTo: args.replyTo,
+    replyToName: args.replyToName,
+    cc: args.cc,
+    bcc: args.bcc,
     subject: args.subject,
     html: args.html,
     text: args.text,
     templateId: args.templateId,
     dynamicData: args.dynamicData,
     attachments: args.attachments,
+    unsubscribeGroupId: args.unsubscribeGroupId,
   };
 }
 
@@ -213,6 +249,7 @@ export const sendBulk = mutation({
     const from = args.from ?? globals.defaultFrom;
     const replyTo = args.replyTo ?? globals.defaultReplyTo;
 
+    assertAttachmentsValid(args.attachments);
     assertPayloadValid({
       from,
       subject: args.subject,
@@ -261,7 +298,11 @@ export const sendBulk = mutation({
         status: "queued",
         to: [recipient],
         from: from!,
+        fromName: args.fromName,
         replyTo,
+        replyToName: args.replyToName,
+        cc: args.cc,
+        bcc: args.bcc,
         subject: args.subject,
         html: args.html,
         text: args.text,
@@ -269,6 +310,7 @@ export const sendBulk = mutation({
         dynamicData: args.dynamicData,
         attachments: args.attachments,
         metadata: args.metadata,
+        unsubscribeGroupId: args.unsubscribeGroupId,
         attemptCount: 0,
         maxAttempts: globals.maxAttempts,
         nextAttemptAt: now,

@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Copy,
   Inbox,
+  Link2,
   Mail,
   Paperclip,
   Plus,
@@ -60,11 +61,24 @@ export function SendView({
   setFromOverride,
   replyToOverride,
   setReplyToOverride,
+  toName,
+  setToName,
+  fromName,
+  setFromName,
+  replyToName,
+  setReplyToName,
+  ccField,
+  setCcField,
+  bccField,
+  setBccField,
+  unsubscribeGroupId,
+  setUnsubscribeGroupId,
   emailMetadata,
   setEmailMetadata,
   attachments,
   setAttachments,
   onAddFiles,
+  onAddUrlAttachment,
   onQueueSingle,
   onQueueBulk,
   onProcessQueue,
@@ -98,11 +112,24 @@ export function SendView({
   setFromOverride: (v: string) => void;
   replyToOverride: string;
   setReplyToOverride: (v: string) => void;
+  toName: string;
+  setToName: (v: string) => void;
+  fromName: string;
+  setFromName: (v: string) => void;
+  replyToName: string;
+  setReplyToName: (v: string) => void;
+  ccField: string;
+  setCcField: (v: string) => void;
+  bccField: string;
+  setBccField: (v: string) => void;
+  unsubscribeGroupId: string;
+  setUnsubscribeGroupId: (v: string) => void;
   emailMetadata: string;
   setEmailMetadata: (v: string) => void;
   attachments: AttachmentItem[];
   setAttachments: (v: AttachmentItem[]) => void;
   onAddFiles: (files: FileList) => void;
+  onAddUrlAttachment: (filename: string, fileUrl: string, description?: string) => void;
   onQueueSingle: () => void;
   onQueueBulk: () => void;
   onProcessQueue: () => void;
@@ -340,38 +367,12 @@ export function SendView({
           )}
 
           {/* Attachments */}
-          <div className="space-y-2">
-            <Label className="text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-              <Paperclip className="size-3" />
-              Attachments
-              <span className="text-zinc-400 dark:text-zinc-500">(base64, ~1MB limit)</span>
-            </Label>
-            {attachments.length > 0 && (
-              <div className="space-y-1">
-                {attachments.map((att, i) => (
-                  <div key={i} className="flex items-center justify-between rounded border border-zinc-200 dark:border-zinc-700 px-2.5 py-1.5 text-xs">
-                    <span className="truncate text-zinc-700 dark:text-zinc-300">{att.filename}</span>
-                    <button
-                      onClick={() => setAttachments(attachments.filter((_, j) => j !== i))}
-                      className="text-zinc-400 hover:text-red-500 cursor-pointer ml-2"
-                    >
-                      <X className="size-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <label className="inline-flex items-center gap-1.5 text-xs text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 cursor-pointer">
-              <Plus className="size-3" />
-              Add files
-              <input
-                type="file"
-                multiple
-                className="hidden"
-                onChange={(e) => e.target.files && onAddFiles(e.target.files)}
-              />
-            </label>
-          </div>
+          <AttachmentsSection
+            attachments={attachments}
+            setAttachments={setAttachments}
+            onAddFiles={onAddFiles}
+            onAddUrlAttachment={onAddUrlAttachment}
+          />
 
           {/* Advanced options */}
           <details className="group">
@@ -380,21 +381,90 @@ export function SendView({
               Advanced Options
             </summary>
             <div className="mt-3 space-y-3">
+              {sendMode === "single" && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-zinc-500 dark:text-zinc-400">
+                    Recipient Display Name
+                    <span className="text-zinc-400 dark:text-zinc-500 ml-1">(To name)</span>
+                  </Label>
+                  <Input
+                    value={toName}
+                    onChange={(e) => setToName(e.target.value)}
+                    placeholder="Jane Doe"
+                    className="text-xs"
+                  />
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-zinc-500 dark:text-zinc-400">From Override</Label>
+                  <Input
+                    value={fromOverride}
+                    onChange={(e) => setFromOverride(e.target.value)}
+                    placeholder="sender@example.com"
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-zinc-500 dark:text-zinc-400">From Name</Label>
+                  <Input
+                    value={fromName}
+                    onChange={(e) => setFromName(e.target.value)}
+                    placeholder="Support Team"
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-zinc-500 dark:text-zinc-400">Reply-To Override</Label>
+                  <Input
+                    value={replyToOverride}
+                    onChange={(e) => setReplyToOverride(e.target.value)}
+                    placeholder="replies@example.com"
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-zinc-500 dark:text-zinc-400">Reply-To Name</Label>
+                  <Input
+                    value={replyToName}
+                    onChange={(e) => setReplyToName(e.target.value)}
+                    placeholder="Reply Handler"
+                    className="text-xs"
+                  />
+                </div>
+              </div>
               <div className="space-y-1.5">
-                <Label className="text-xs text-zinc-500 dark:text-zinc-400">From Override</Label>
+                <Label className="text-xs text-zinc-500 dark:text-zinc-400">
+                  CC
+                  <span className="text-zinc-400 dark:text-zinc-500 ml-1">(comma-separated, Name &lt;email&gt; format supported)</span>
+                </Label>
                 <Input
-                  value={fromOverride}
-                  onChange={(e) => setFromOverride(e.target.value)}
-                  placeholder="custom-sender@example.com"
+                  value={ccField}
+                  onChange={(e) => setCcField(e.target.value)}
+                  placeholder="cc@example.com, Jane <jane@example.com>"
                   className="font-mono text-xs"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs text-zinc-500 dark:text-zinc-400">Reply-To Override</Label>
+                <Label className="text-xs text-zinc-500 dark:text-zinc-400">
+                  BCC
+                  <span className="text-zinc-400 dark:text-zinc-500 ml-1">(comma-separated)</span>
+                </Label>
                 <Input
-                  value={replyToOverride}
-                  onChange={(e) => setReplyToOverride(e.target.value)}
-                  placeholder="replies@example.com"
+                  value={bccField}
+                  onChange={(e) => setBccField(e.target.value)}
+                  placeholder="bcc@example.com"
+                  className="font-mono text-xs"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-zinc-500 dark:text-zinc-400">Unsubscribe Group ID</Label>
+                <Input
+                  value={unsubscribeGroupId}
+                  onChange={(e) => setUnsubscribeGroupId(e.target.value)}
+                  placeholder="marketing-weekly"
                   className="font-mono text-xs"
                 />
               </div>
@@ -599,6 +669,119 @@ export function SendView({
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+function AttachmentsSection({
+  attachments,
+  setAttachments,
+  onAddFiles,
+  onAddUrlAttachment,
+}: {
+  attachments: AttachmentItem[];
+  setAttachments: (v: AttachmentItem[]) => void;
+  onAddFiles: (files: FileList) => void;
+  onAddUrlAttachment: (filename: string, fileUrl: string, description?: string) => void;
+}) {
+  const [showUrlForm, setShowUrlForm] = useState(false);
+  const [urlFilename, setUrlFilename] = useState("");
+  const [urlValue, setUrlValue] = useState("");
+  const [urlDescription, setUrlDescription] = useState("");
+
+  return (
+    <div className="space-y-2">
+      <Label className="text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+        <Paperclip className="size-3" />
+        Attachments
+      </Label>
+      {attachments.length > 0 && (
+        <div className="space-y-1">
+          {attachments.map((att, i) => (
+            <div key={i} className="flex items-center justify-between rounded border border-zinc-200 dark:border-zinc-700 px-2.5 py-1.5 text-xs">
+              <div className="flex items-center gap-1.5 truncate">
+                {att.fileUrl ? (
+                  <Link2 className="size-3 text-sky-500 shrink-0" />
+                ) : (
+                  <Paperclip className="size-3 text-zinc-400 shrink-0" />
+                )}
+                <span className="truncate text-zinc-700 dark:text-zinc-300">{att.filename}</span>
+                {att.fileUrl && (
+                  <span className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate">
+                    {att.fileUrl}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => setAttachments(attachments.filter((_, j) => j !== i))}
+                className="text-zinc-400 hover:text-red-500 cursor-pointer ml-2 shrink-0"
+              >
+                <X className="size-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-3">
+        <label className="inline-flex items-center gap-1.5 text-xs text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 cursor-pointer">
+          <Plus className="size-3" />
+          Add files
+          <input
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => e.target.files && onAddFiles(e.target.files)}
+          />
+        </label>
+        <button
+          onClick={() => setShowUrlForm((v) => !v)}
+          className="inline-flex items-center gap-1.5 text-xs text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 cursor-pointer"
+        >
+          <Link2 className="size-3" />
+          Add URL
+        </button>
+      </div>
+      {showUrlForm && (
+        <div className="space-y-2 rounded border border-zinc-200 dark:border-zinc-700 p-2.5">
+          <Input
+            value={urlFilename}
+            onChange={(e) => setUrlFilename(e.target.value)}
+            placeholder="report.pdf"
+            className="text-xs"
+          />
+          <Input
+            value={urlValue}
+            onChange={(e) => setUrlValue(e.target.value)}
+            placeholder="https://cdn.example.com/report.pdf"
+            className="font-mono text-xs"
+          />
+          <Input
+            value={urlDescription}
+            onChange={(e) => setUrlDescription(e.target.value)}
+            placeholder="Description (optional)"
+            className="text-xs"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs"
+            onClick={() => {
+              if (!urlFilename.trim() || !urlValue.trim()) {
+                toast.error("Filename and URL are required");
+                return;
+              }
+              onAddUrlAttachment(urlFilename, urlValue, urlDescription);
+              setUrlFilename("");
+              setUrlValue("");
+              setUrlDescription("");
+              setShowUrlForm(false);
+            }}
+          >
+            <Plus className="size-3" />
+            Add
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

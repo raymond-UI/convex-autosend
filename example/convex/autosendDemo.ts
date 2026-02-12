@@ -4,9 +4,16 @@ import { autosend } from "./email";
 
 const attachmentValidator = v.object({
   filename: v.string(),
-  content: v.string(),
+  content: v.optional(v.string()),
+  fileUrl: v.optional(v.string()),
   contentType: v.optional(v.string()),
   disposition: v.optional(v.string()),
+  description: v.optional(v.string()),
+});
+
+const emailRecipientValidator = v.object({
+  email: v.string(),
+  name: v.optional(v.string()),
 });
 
 async function ensureDemoEmail(
@@ -72,8 +79,13 @@ export const setConfig = mutation({
 export const sendEmail = mutation({
   args: {
     to: v.string(),
+    toName: v.optional(v.string()),
     from: v.optional(v.string()),
+    fromName: v.optional(v.string()),
     replyTo: v.optional(v.string()),
+    replyToName: v.optional(v.string()),
+    cc: v.optional(v.array(emailRecipientValidator)),
+    bcc: v.optional(v.array(emailRecipientValidator)),
     subject: v.optional(v.string()),
     html: v.optional(v.string()),
     text: v.optional(v.string()),
@@ -82,12 +94,18 @@ export const sendEmail = mutation({
     attachments: v.optional(v.array(attachmentValidator)),
     metadata: v.optional(v.any()),
     idempotencyKey: v.optional(v.string()),
+    unsubscribeGroupId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const result = await autosend.sendEmail(ctx, {
       to: [args.to],
+      toName: args.toName,
       from: args.from,
+      fromName: args.fromName,
       replyTo: args.replyTo,
+      replyToName: args.replyToName,
+      cc: args.cc,
+      bcc: args.bcc,
       subject: args.subject,
       html: args.html,
       text: args.text,
@@ -96,6 +114,7 @@ export const sendEmail = mutation({
       attachments: args.attachments,
       metadata: args.metadata,
       idempotencyKey: args.idempotencyKey,
+      unsubscribeGroupId: args.unsubscribeGroupId,
     });
 
     await ensureDemoEmail(ctx, {
@@ -114,7 +133,11 @@ export const sendBulk = mutation({
   args: {
     recipients: v.array(v.string()),
     from: v.optional(v.string()),
+    fromName: v.optional(v.string()),
     replyTo: v.optional(v.string()),
+    replyToName: v.optional(v.string()),
+    cc: v.optional(v.array(emailRecipientValidator)),
+    bcc: v.optional(v.array(emailRecipientValidator)),
     subject: v.optional(v.string()),
     html: v.optional(v.string()),
     text: v.optional(v.string()),
@@ -123,6 +146,7 @@ export const sendBulk = mutation({
     attachments: v.optional(v.array(attachmentValidator)),
     metadata: v.optional(v.any()),
     idempotencyKeyPrefix: v.optional(v.string()),
+    unsubscribeGroupId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const recipients = Array.from(
@@ -132,7 +156,11 @@ export const sendBulk = mutation({
     const result = await autosend.sendBulk(ctx, {
       recipients,
       from: args.from,
+      fromName: args.fromName,
       replyTo: args.replyTo,
+      replyToName: args.replyToName,
+      cc: args.cc,
+      bcc: args.bcc,
       subject: args.subject,
       html: args.html,
       text: args.text,
@@ -141,6 +169,7 @@ export const sendBulk = mutation({
       attachments: args.attachments,
       metadata: args.metadata,
       idempotencyKeyPrefix: args.idempotencyKeyPrefix,
+      unsubscribeGroupId: args.unsubscribeGroupId,
     });
 
     for (let index = 0; index < result.emailIds.length; index += 1) {

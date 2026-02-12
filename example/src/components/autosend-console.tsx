@@ -82,6 +82,12 @@ export default function AutoSendConsole() {
   const [dynamicData, setDynamicData] = useState("");
   const [fromOverride, setFromOverride] = useState("");
   const [replyToOverride, setReplyToOverride] = useState("");
+  const [toName, setToName] = useState("");
+  const [fromName, setFromName] = useState("");
+  const [replyToName, setReplyToName] = useState("");
+  const [ccField, setCcField] = useState("");
+  const [bccField, setBccField] = useState("");
+  const [unsubscribeGroupId, setUnsubscribeGroupId] = useState("");
   const [emailMetadata, setEmailMetadata] = useState("");
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
 
@@ -163,6 +169,21 @@ export default function AutoSendConsole() {
   }, [demoEmails]);
 
   // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
+  function parseCcBccList(input: string): Array<{ email: string; name?: string }> | undefined {
+    const entries = input.split(",").map((s) => s.trim()).filter(Boolean);
+    if (entries.length === 0) return undefined;
+    return entries.map((entry) => {
+      // Parse "Name <email>" format
+      const match = entry.match(/^(.+?)\s*<([^>]+)>$/);
+      if (match) return { email: match[2]!.trim(), name: match[1]!.trim() };
+      return { email: entry };
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // Handlers
   // ---------------------------------------------------------------------------
 
@@ -224,12 +245,18 @@ export default function AutoSendConsole() {
     try {
       const result = await sendEmail({
         to: to.trim(),
+        toName: toName.trim() || undefined,
         subject: composeMode === "content" ? subject : undefined,
         html: composeMode === "content" ? html : undefined,
         templateId: composeMode === "template" && templateId.trim() ? templateId.trim() : undefined,
         dynamicData: parsedDynamic,
         from: fromOverride.trim() || undefined,
+        fromName: fromName.trim() || undefined,
         replyTo: replyToOverride.trim() || undefined,
+        replyToName: replyToName.trim() || undefined,
+        cc: parseCcBccList(ccField),
+        bcc: parseCcBccList(bccField),
+        unsubscribeGroupId: unsubscribeGroupId.trim() || undefined,
         attachments: attachments.length > 0 ? attachments : undefined,
         metadata: parsedMetadata,
         idempotencyKey: idempotencyKey.trim() || undefined,
@@ -240,7 +267,7 @@ export default function AutoSendConsole() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Queue failed");
     }
-  }, [sendEmail, to, subject, html, idempotencyKey, composeMode, templateId, dynamicData, fromOverride, replyToOverride, emailMetadata, attachments]);
+  }, [sendEmail, to, toName, subject, html, idempotencyKey, composeMode, templateId, dynamicData, fromOverride, fromName, replyToOverride, replyToName, ccField, bccField, unsubscribeGroupId, emailMetadata, attachments]);
 
   const onQueueBulk = useCallback(async () => {
     const recipients = Array.from(
@@ -271,7 +298,12 @@ export default function AutoSendConsole() {
         templateId: composeMode === "template" && templateId.trim() ? templateId.trim() : undefined,
         dynamicData: parsedDynamic,
         from: fromOverride.trim() || undefined,
+        fromName: fromName.trim() || undefined,
         replyTo: replyToOverride.trim() || undefined,
+        replyToName: replyToName.trim() || undefined,
+        cc: parseCcBccList(ccField),
+        bcc: parseCcBccList(bccField),
+        unsubscribeGroupId: unsubscribeGroupId.trim() || undefined,
         attachments: attachments.length > 0 ? attachments : undefined,
         metadata: parsedMetadata,
         idempotencyKeyPrefix: idempotencyPrefix.trim() || undefined,
@@ -280,7 +312,7 @@ export default function AutoSendConsole() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Bulk queue failed");
     }
-  }, [sendBulk, bulkRecipients, subject, html, idempotencyPrefix, composeMode, templateId, dynamicData, fromOverride, replyToOverride, emailMetadata, attachments]);
+  }, [sendBulk, bulkRecipients, subject, html, idempotencyPrefix, composeMode, templateId, dynamicData, fromOverride, fromName, replyToOverride, replyToName, ccField, bccField, unsubscribeGroupId, emailMetadata, attachments]);
 
   const onProcessQueue = useCallback(async () => {
     setProcessing(true);
@@ -345,10 +377,19 @@ export default function AutoSendConsole() {
       newItems.push({
         filename: file.name,
         content: base64,
-        contentType: file.type || "application/octet-stream",
+        contentType: file.type || undefined,
       });
     }
     setAttachments((prev) => [...prev, ...newItems]);
+  }, []);
+
+  const onAddUrlAttachment = useCallback((filename: string, fileUrl: string, description?: string) => {
+    if (!filename.trim() || !fileUrl.trim()) return;
+    setAttachments((prev) => [...prev, {
+      filename: filename.trim(),
+      fileUrl: fileUrl.trim(),
+      description: description?.trim() || undefined,
+    }]);
   }, []);
 
   const onCreateInbox = useCallback(async () => {
@@ -547,11 +588,24 @@ export default function AutoSendConsole() {
             setFromOverride={setFromOverride}
             replyToOverride={replyToOverride}
             setReplyToOverride={setReplyToOverride}
+            toName={toName}
+            setToName={setToName}
+            fromName={fromName}
+            setFromName={setFromName}
+            replyToName={replyToName}
+            setReplyToName={setReplyToName}
+            ccField={ccField}
+            setCcField={setCcField}
+            bccField={bccField}
+            setBccField={setBccField}
+            unsubscribeGroupId={unsubscribeGroupId}
+            setUnsubscribeGroupId={setUnsubscribeGroupId}
             emailMetadata={emailMetadata}
             setEmailMetadata={setEmailMetadata}
             attachments={attachments}
             setAttachments={setAttachments}
             onAddFiles={onAddFiles}
+            onAddUrlAttachment={onAddUrlAttachment}
             onQueueSingle={onQueueSingle}
             onQueueBulk={onQueueBulk}
             onProcessQueue={onProcessQueue}

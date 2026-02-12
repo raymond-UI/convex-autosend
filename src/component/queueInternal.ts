@@ -12,8 +12,13 @@ function asObject(value: unknown): Record<string, unknown> {
 function buildProviderPayload(params: {
   email: {
     to: string[];
+    toName?: string;
     from: string;
+    fromName?: string;
     replyTo?: string;
+    replyToName?: string;
+    cc?: Array<{ email: string; name?: string }>;
+    bcc?: Array<{ email: string; name?: string }>;
     subject?: string;
     html?: string;
     text?: string;
@@ -21,6 +26,7 @@ function buildProviderPayload(params: {
     dynamicData?: unknown;
     attachments?: unknown;
     metadata?: unknown;
+    unsubscribeGroupId?: string;
   };
   globals: {
     testMode: boolean;
@@ -30,6 +36,8 @@ function buildProviderPayload(params: {
   const email = params.email;
   let to = email.to;
   let metadata = email.metadata;
+  let cc = email.cc as Array<{ email: string; name?: string }> | undefined;
+  let bcc = email.bcc as Array<{ email: string; name?: string }> | undefined;
 
   if (params.globals.testMode) {
     if (params.globals.sandboxTo.length === 0) {
@@ -39,16 +47,27 @@ function buildProviderPayload(params: {
       };
     }
     to = params.globals.sandboxTo;
+    // Strip CC/BCC in test mode to prevent accidental sends to real recipients.
+    // Stash originals in metadata for debugging.
     metadata = {
       ...asObject(email.metadata),
       autosendOriginalTo: email.to,
+      ...(email.cc ? { autosendOriginalCc: email.cc } : {}),
+      ...(email.bcc ? { autosendOriginalBcc: email.bcc } : {}),
     };
+    cc = undefined;
+    bcc = undefined;
   }
 
   return {
     to,
+    toName: email.toName,
     from: email.from,
+    fromName: email.fromName,
     replyTo: email.replyTo,
+    replyToName: email.replyToName,
+    cc,
+    bcc,
     subject: email.subject,
     html: email.html,
     text: email.text,
@@ -56,6 +75,7 @@ function buildProviderPayload(params: {
     dynamicData: email.dynamicData,
     attachments: email.attachments as any,
     metadata,
+    unsubscribeGroupId: email.unsubscribeGroupId,
   };
 }
 

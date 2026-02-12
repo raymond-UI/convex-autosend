@@ -20,19 +20,33 @@ export type ProviderCompatibilityMode = Infer<
   typeof providerCompatibilityModeValidator
 >;
 
+export const emailRecipientValidator = v.object({
+  email: v.string(),
+  name: v.optional(v.string()),
+});
+
+export type EmailRecipient = Infer<typeof emailRecipientValidator>;
+
 export const attachmentValidator = v.object({
   filename: v.string(),
-  content: v.string(),
+  content: v.optional(v.string()),
+  fileUrl: v.optional(v.string()),
   contentType: v.optional(v.string()),
   disposition: v.optional(v.string()),
+  description: v.optional(v.string()),
 });
 
 export type Attachment = Infer<typeof attachmentValidator>;
 
 export const sendEmailArgsValidator = v.object({
   to: v.array(v.string()),
+  toName: v.optional(v.string()),
   from: v.optional(v.string()),
+  fromName: v.optional(v.string()),
   replyTo: v.optional(v.string()),
+  replyToName: v.optional(v.string()),
+  cc: v.optional(v.array(emailRecipientValidator)),
+  bcc: v.optional(v.array(emailRecipientValidator)),
   subject: v.optional(v.string()),
   html: v.optional(v.string()),
   text: v.optional(v.string()),
@@ -41,6 +55,7 @@ export const sendEmailArgsValidator = v.object({
   attachments: v.optional(v.array(attachmentValidator)),
   metadata: v.optional(v.any()),
   idempotencyKey: v.optional(v.string()),
+  unsubscribeGroupId: v.optional(v.string()),
 });
 
 export type SendEmailArgs = Infer<typeof sendEmailArgsValidator>;
@@ -48,7 +63,11 @@ export type SendEmailArgs = Infer<typeof sendEmailArgsValidator>;
 export const sendBulkArgsValidator = v.object({
   recipients: v.array(v.string()),
   from: v.optional(v.string()),
+  fromName: v.optional(v.string()),
   replyTo: v.optional(v.string()),
+  replyToName: v.optional(v.string()),
+  cc: v.optional(v.array(emailRecipientValidator)),
+  bcc: v.optional(v.array(emailRecipientValidator)),
   subject: v.optional(v.string()),
   html: v.optional(v.string()),
   text: v.optional(v.string()),
@@ -57,6 +76,7 @@ export const sendBulkArgsValidator = v.object({
   attachments: v.optional(v.array(attachmentValidator)),
   metadata: v.optional(v.any()),
   idempotencyKeyPrefix: v.optional(v.string()),
+  unsubscribeGroupId: v.optional(v.string()),
 });
 
 export type SendBulkArgs = Infer<typeof sendBulkArgsValidator>;
@@ -104,8 +124,13 @@ export const emailDocValidator = v.object({
   idempotencyKey: v.string(),
   status: emailStatusValidator,
   to: v.array(v.string()),
+  toName: v.optional(v.string()),
   from: v.string(),
+  fromName: v.optional(v.string()),
   replyTo: v.optional(v.string()),
+  replyToName: v.optional(v.string()),
+  cc: v.optional(v.array(emailRecipientValidator)),
+  bcc: v.optional(v.array(emailRecipientValidator)),
   subject: v.optional(v.string()),
   html: v.optional(v.string()),
   text: v.optional(v.string()),
@@ -113,6 +138,7 @@ export const emailDocValidator = v.object({
   dynamicData: v.optional(v.any()),
   attachments: v.optional(v.array(attachmentValidator)),
   metadata: v.optional(v.any()),
+  unsubscribeGroupId: v.optional(v.string()),
   attemptCount: v.number(),
   maxAttempts: v.number(),
   nextAttemptAt: v.number(),
