@@ -62,7 +62,16 @@ function buildBody(payload: ProviderSendPayload) {
     ...(payload.text !== undefined ? { text: payload.text } : {}),
     ...(payload.templateId !== undefined ? { templateId: payload.templateId } : {}),
     ...(payload.dynamicData !== undefined ? { dynamicData: payload.dynamicData } : {}),
-    ...(payload.attachments !== undefined ? { attachments: payload.attachments } : {}),
+    ...(payload.attachments !== undefined
+      ? {
+          attachments: payload.attachments.map((a) => ({
+            fileName: a.filename,
+            content: a.content,
+            ...(a.contentType !== undefined ? { contentType: a.contentType } : {}),
+            ...(a.disposition !== undefined ? { disposition: a.disposition } : {}),
+          })),
+        }
+      : {}),
     ...(payload.metadata !== undefined ? { metadata: payload.metadata } : {}),
   };
 }

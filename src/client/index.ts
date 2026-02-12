@@ -104,6 +104,13 @@ export class AutoSend {
     return await ctx.runQuery(this.component.queries.status, args);
   }
 
+  async listEvents(
+    ctx: QueryCtx,
+    args: { emailId: string; limit?: number },
+  ) {
+    return await ctx.runQuery(this.component.queries.listEvents, args);
+  }
+
   async cancelEmail(ctx: MutationCtx, args: { emailId: string }) {
     return await ctx.runMutation(this.component.emails.cancelEmail, args);
   }

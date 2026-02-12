@@ -75,6 +75,39 @@ export const dueByStatus = internalQuery({
   },
 });
 
+export const listEvents = query({
+  args: {
+    emailId: v.string(),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(
+    v.object({
+      emailId: v.string(),
+      eventType: v.string(),
+      payload: v.any(),
+      providerMessageId: v.optional(v.string()),
+      occurredAt: v.number(),
+      receivedAt: v.number(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const limit = Math.min(Math.max(args.limit ?? 50, 1), 200);
+    const events = await ctx.db
+      .query("emailEvents")
+      .withIndex("by_emailId_occurredAt", (q) => q.eq("emailId", args.emailId))
+      .order("desc")
+      .take(limit);
+    return events.map((e) => ({
+      emailId: e.emailId,
+      eventType: e.eventType,
+      payload: e.payload,
+      providerMessageId: e.providerMessageId,
+      occurredAt: e.occurredAt,
+      receivedAt: e.receivedAt,
+    }));
+  },
+});
+
 export const hasAnyDue = internalQuery({
   args: {
     now: v.number(),
