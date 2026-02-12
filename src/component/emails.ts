@@ -117,6 +117,11 @@ export const sendEmail = mutation({
     if (to.length === 0) {
       throw new Error("At least one recipient is required.");
     }
+    if (to.length > 1) {
+      throw new Error(
+        "sendEmail supports a single recipient. Use sendBulk for multiple recipients.",
+      );
+    }
 
     const from = args.from ?? globals.defaultFrom;
     const replyTo = args.replyTo ?? globals.defaultReplyTo;

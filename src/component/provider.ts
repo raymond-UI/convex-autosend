@@ -158,6 +158,8 @@ export async function normalizeError(
   return `AutoSend ${response.status}: request failed`;
 }
 
+const PROVIDER_TIMEOUT_MS = 30_000;
+
 export async function sendOne(
   payload: ProviderSendPayload,
   options: ProviderOptions,
@@ -167,19 +169,29 @@ export async function sendOne(
 
   let response: Response;
   try {
-    response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${options.apiKey}`,
-      },
-      body: JSON.stringify(buildBody(payload)),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
+    try {
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${options.apiKey}`,
+        },
+        body: JSON.stringify(buildBody(payload)),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
   } catch (error) {
+    const isTimeout = error instanceof DOMException && error.name === "AbortError";
     return {
       ok: false,
       retryable: true,
-      error: `AutoSend request failed: ${error instanceof Error ? error.message : String(error)}`,
+      error: isTimeout
+        ? `AutoSend request timed out after ${PROVIDER_TIMEOUT_MS}ms`
+        : `AutoSend request failed: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 
@@ -232,19 +244,29 @@ export async function sendBulk(
 
   let response: Response;
   try {
-    response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${options.apiKey}`,
-      },
-      body: JSON.stringify({ mails: payloads.map((payload) => buildBody(payload)) }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
+    try {
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${options.apiKey}`,
+        },
+        body: JSON.stringify({ mails: payloads.map((payload) => buildBody(payload)) }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
   } catch (error) {
+    const isTimeout = error instanceof DOMException && error.name === "AbortError";
     return {
       ok: false,
       retryable: true,
-      error: `AutoSend bulk request failed: ${error instanceof Error ? error.message : String(error)}`,
+      error: isTimeout
+        ? `AutoSend bulk request timed out after ${PROVIDER_TIMEOUT_MS}ms`
+        : `AutoSend bulk request failed: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 

@@ -89,6 +89,18 @@ export const processDueQueue = internalAction({
       .sort((a, b) => a.nextAttemptAt - b.nextAttemptAt)
       .slice(0, perRunLimit);
 
+    // Fail fast if API key is missing — no point claiming and failing each email individually.
+    const apiKey = globals.autosendApiKey;
+    if (!apiKey && due.length > 0) {
+      return {
+        processedCount: 0,
+        sentCount: 0,
+        retriedCount: 0,
+        failedCount: 0,
+        hasMoreDue: true,
+      };
+    }
+
     let processedCount = 0;
     let sentCount = 0;
     let retriedCount = 0;
@@ -126,19 +138,8 @@ export const processDueQueue = internalAction({
           continue;
         }
 
-        if (!globals.autosendApiKey) {
-          await ctx.runMutation(internal.emails.markSendFailure, {
-            emailId: claimed.emailId,
-            error: "AutoSend API key is not configured.",
-            retryable: false,
-            now: Date.now(),
-          });
-          failedCount += 1;
-          continue;
-        }
-
         const result = await sendOne(payload, {
-          apiKey: globals.autosendApiKey,
+          apiKey: apiKey!,
           baseUrl: globals.autosendBaseUrl,
           compatibilityMode: globals.providerCompatibilityMode,
         });

@@ -182,7 +182,7 @@ export const handleCallback = action({
     }
 
     const now = Date.now();
-    const maxSkewMs = 5 * 60 * 1000;
+    const maxSkewMs = 2 * 60 * 1000;
     if (Math.abs(now - timestampMs) > maxSkewMs) {
       return {
         ok: false,
