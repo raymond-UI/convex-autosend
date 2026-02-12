@@ -205,4 +205,10 @@ export const abandonedCleanupResultValidator = v.object({
 });
 export type AbandonedCleanupResult = Infer<typeof abandonedCleanupResultValidator>;
 
+export const deliveryCleanupResultValidator = v.object({
+  deletedCount: v.number(),
+  hasMore: v.boolean(),
+});
+export type DeliveryCleanupResult = Infer<typeof deliveryCleanupResultValidator>;
+
 export const TERMINAL_STATUSES: EmailStatus[] = ["sent", "failed", "canceled"];

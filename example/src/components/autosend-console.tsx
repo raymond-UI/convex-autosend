@@ -51,6 +51,7 @@ export default function AutoSendConsole() {
   const cleanupAbandonedEmails = useAction(api.autosendDemo.cleanupAbandonedEmails);
   const executeCleanupOld = useAction(api.autosendDemo.executeCleanupOld);
   const executeCleanupAbandoned = useAction(api.autosendDemo.executeCleanupAbandoned);
+  const cleanupOldDeliveries = useAction(api.autosendDemo.cleanupOldDeliveries);
   const createInbox = useAction(api.mailtm.createInbox);
   const syncInbox = useAction(api.mailtm.syncInbox);
   const syncAllInboxes = useAction(api.mailtm.syncAllInboxes);
@@ -97,8 +98,12 @@ export default function AutoSendConsole() {
   // Ops
   const [queueResult, setQueueResult] = useState<QueueResult | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [cleanupRunning, setCleanupRunning] = useState(false);
+  const [dryRunOldResult, setDryRunOldResult] = useState<any>(null);
+  const [dryRunAbandonedResult, setDryRunAbandonedResult] = useState<any>(null);
   const [cleanupOldResult, setCleanupOldResult] = useState<any>(null);
   const [cleanupAbandonedResult, setCleanupAbandonedResult] = useState<any>(null);
+  const [cleanupDeliveryResult, setCleanupDeliveryResult] = useState<any>(null);
 
   // ---------------------------------------------------------------------------
   // Effects
@@ -328,40 +333,66 @@ export default function AutoSendConsole() {
   }, [processQueue]);
 
   const onDryRunCleanup = useCallback(async () => {
+    setCleanupRunning(true);
     try {
       const [oldResult, abandonedResult] = await Promise.all([
-        cleanupOldEmails({ dryRun: true, olderThanMs: 7 * 24 * 60 * 60 * 1000 }),
-        cleanupAbandonedEmails({ dryRun: true, staleAfterMs: 15 * 60 * 1000 }),
+        cleanupOldEmails({ dryRun: true }),
+        cleanupAbandonedEmails({ dryRun: true }),
       ]);
+      setDryRunOldResult(oldResult);
+      setDryRunAbandonedResult(abandonedResult);
       toast.success(
         `Dry-run: ${oldResult.emailIds.length} old, ${abandonedResult.emailIds.length} abandoned`,
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Cleanup failed");
+    } finally {
+      setCleanupRunning(false);
     }
   }, [cleanupOldEmails, cleanupAbandonedEmails]);
 
   const onExecuteCleanupOld = useCallback(async () => {
     if (!confirm("Delete old terminal emails older than 7 days? This cannot be undone.")) return;
+    setCleanupRunning(true);
     try {
-      const result = await executeCleanupOld({ olderThanMs: 7 * 24 * 60 * 60 * 1000 });
+      const result = await executeCleanupOld({});
       setCleanupOldResult(result);
+      setDryRunOldResult(null);
       toast.success(`Deleted ${result.deletedCount} old emails`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Cleanup failed");
+    } finally {
+      setCleanupRunning(false);
     }
   }, [executeCleanupOld]);
 
   const onExecuteCleanupAbandoned = useCallback(async () => {
     if (!confirm("Recover abandoned sending emails (stuck >15 min)? They will be re-queued.")) return;
+    setCleanupRunning(true);
     try {
-      const result = await executeCleanupAbandoned({ staleAfterMs: 15 * 60 * 1000 });
+      const result = await executeCleanupAbandoned({});
       setCleanupAbandonedResult(result);
+      setDryRunAbandonedResult(null);
       toast.success(`Recovered ${result.recoveredCount} abandoned emails`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Recovery failed");
+    } finally {
+      setCleanupRunning(false);
     }
   }, [executeCleanupAbandoned]);
+
+  const onCleanupDeliveries = useCallback(async () => {
+    setCleanupRunning(true);
+    try {
+      const result = await cleanupOldDeliveries({});
+      setCleanupDeliveryResult(result);
+      toast.success(`Deleted ${result.deletedCount} old webhook delivery records`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delivery cleanup failed");
+    } finally {
+      setCleanupRunning(false);
+    }
+  }, [cleanupOldDeliveries]);
 
   const onAddFiles = useCallback(async (files: FileList) => {
     const newItems: AttachmentItem[] = [];
@@ -638,12 +669,17 @@ export default function AutoSendConsole() {
             onDryRunCleanup={onDryRunCleanup}
             onExecuteCleanupOld={onExecuteCleanupOld}
             onExecuteCleanupAbandoned={onExecuteCleanupAbandoned}
+            onCleanupDeliveries={onCleanupDeliveries}
             processing={processing}
+            cleanupRunning={cleanupRunning}
             queueResult={queueResult}
             emailCounts={emailCounts}
             config={config}
+            dryRunOldResult={dryRunOldResult}
+            dryRunAbandonedResult={dryRunAbandonedResult}
             cleanupOldResult={cleanupOldResult}
             cleanupAbandonedResult={cleanupAbandonedResult}
+            cleanupDeliveryResult={cleanupDeliveryResult}
           />
         )}
         {view === "setup" && (

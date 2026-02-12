@@ -60,6 +60,14 @@ export const deleteEmailsById = internalMutation({
       if (email) {
         await ctx.db.delete(email._id);
       }
+      // Also delete associated emailEvents to prevent orphaned rows.
+      const events = await ctx.db
+        .query("emailEvents")
+        .withIndex("by_emailId_occurredAt", (q) => q.eq("emailId", emailId))
+        .collect();
+      for (const event of events) {
+        await ctx.db.delete(event._id);
+      }
     }
     return null;
   },
@@ -115,5 +123,52 @@ export const recoverAbandoned = internalMutation({
     }
 
     return { recoveredCount, failedCount };
+  },
+});
+
+export const oldDeliveryBatch = internalQuery({
+  args: {
+    before: v.number(),
+    limit: v.number(),
+  },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    let count = 0;
+    const dbQuery = ctx.db
+      .query("webhookDeliveries")
+      .withIndex("by_receivedAt")
+      .order("asc");
+
+    for await (const delivery of dbQuery) {
+      if (delivery.receivedAt > args.before) break;
+      count += 1;
+      if (count >= args.limit) break;
+    }
+
+    return count;
+  },
+});
+
+export const deleteOldDeliveries = internalMutation({
+  args: {
+    before: v.number(),
+    limit: v.number(),
+  },
+  returns: v.object({ deletedCount: v.number(), hasMore: v.boolean() }),
+  handler: async (ctx, args) => {
+    let deletedCount = 0;
+    const dbQuery = ctx.db
+      .query("webhookDeliveries")
+      .withIndex("by_receivedAt")
+      .order("asc");
+
+    for await (const delivery of dbQuery) {
+      if (delivery.receivedAt > args.before) break;
+      await ctx.db.delete(delivery._id);
+      deletedCount += 1;
+      if (deletedCount >= args.limit) break;
+    }
+
+    return { deletedCount, hasMore: deletedCount >= args.limit };
   },
 });

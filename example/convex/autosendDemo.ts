@@ -302,3 +302,13 @@ export const executeCleanupAbandoned = action({
     });
   },
 });
+
+export const cleanupOldDeliveries = action({
+  args: {
+    olderThanMs: v.optional(v.number()),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    return await autosend.cleanupOldDeliveries(ctx, args);
+  },
+});

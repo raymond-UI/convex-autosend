@@ -60,7 +60,9 @@ export default defineSchema({
     deliveryId: v.string(),
     eventType: v.string(),
     receivedAt: v.number(),
-  }).index("by_deliveryId", ["deliveryId"]),
+  })
+    .index("by_deliveryId", ["deliveryId"])
+    .index("by_receivedAt", ["receivedAt"]),
 
   globals: defineTable({
     singleton: v.literal("globals"),

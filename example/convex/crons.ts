@@ -37,4 +37,12 @@ crons.daily(
   {},
 );
 
+// Clean up old webhook delivery records (used for dedup) once a day.
+crons.daily(
+  "cleanup old webhook deliveries",
+  { hourUTC: 3, minuteUTC: 30 },
+  api.autosendDemo.cleanupOldDeliveries,
+  {},
+);
+
 export default crons;

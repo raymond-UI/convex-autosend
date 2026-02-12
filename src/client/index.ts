@@ -12,6 +12,7 @@ export type { ComponentApi } from "../component/_generated/component.js";
 export type {
   Attachment,
   ConfigUpdate,
+  DeliveryCleanupResult,
   EmailRecipient,
   EmailStatus,
   ProviderCompatibilityMode,
@@ -25,6 +26,7 @@ export {
   cancelResultValidator,
   cleanupResultValidator,
   configUpdateValidator,
+  deliveryCleanupResultValidator,
   emailRecipientValidator,
   emailStatusValidator,
   processQueueResultValidator,
@@ -189,6 +191,16 @@ export class AutoSend {
     } = {},
   ) {
     return await ctx.runAction(this.component.cleanup.cleanupAbandonedEmails, args);
+  }
+
+  async cleanupOldDeliveries(
+    ctx: ActionCtx,
+    args: {
+      olderThanMs?: number;
+      batchSize?: number;
+    } = {},
+  ) {
+    return await ctx.runAction(this.component.cleanup.cleanupOldDeliveries, args);
   }
 
   async handleCallback(
