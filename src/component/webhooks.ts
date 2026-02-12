@@ -120,6 +120,7 @@ function extractProviderMessageId(payload: unknown): string | undefined {
     pickString(getNested(data, ["email", "providerMessageId"])),
     pickString(getNested(data, ["data", "messageId"])),
     pickString(getNested(data, ["data", "providerMessageId"])),
+    pickString(getNested(data, ["data", "emailId"])),
   ];
 
   return candidates.find(Boolean);
@@ -249,6 +250,15 @@ export const handleCallback = action({
     if (!resolvedEmailId && extractedProviderMessageId) {
       const byProvider = await ctx.runQuery(internal.queries.getByProviderMessageId, {
         providerMessageId: extractedProviderMessageId,
+      });
+      if (byProvider) {
+        resolvedEmailId = byProvider.emailId;
+      }
+    }
+
+    if (!resolvedEmailId && extractedEmailId) {
+      const byProvider = await ctx.runQuery(internal.queries.getByProviderMessageId, {
+        providerMessageId: extractedEmailId,
       });
       if (byProvider) {
         resolvedEmailId = byProvider.emailId;

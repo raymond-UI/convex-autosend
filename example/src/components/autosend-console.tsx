@@ -1,175 +1,26 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
-import {
-  Send,
-  Inbox,
-  Settings2,
-  Activity,
-  CircleDot,
-  RefreshCw,
-  Trash2,
-  Plus,
-  Zap,
-  Shield,
-  Key,
-  Mail,
-  X,
-  ChevronRight,
-  AlertCircle,
-  ChevronDown,
-  Copy,
-  Check,
-} from "lucide-react";
+import { Send, Inbox, Settings2, Activity, Mail } from "lucide-react";
 
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
-
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+
+import type { AttachmentItem, QueueResult } from "./autosend-console/shared";
+import { SendView } from "./autosend-console/send-view";
+import { InboxView, useMailTmLiveSync } from "./autosend-console/inbox-view";
+import { OpsView } from "./autosend-console/ops-view";
+import { SetupView } from "./autosend-console/setup-view";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type View = "send" | "inbox" | "ops" | "setup";
-
-type QueueResult = {
-  processedCount: number;
-  sentCount: number;
-  retriedCount: number;
-  failedCount: number;
-  hasMoreDue: boolean;
-};
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function statusBadgeVariant(status?: string) {
-  switch (status) {
-    case "sent":
-      return "success" as const;
-    case "failed":
-      return "destructive" as const;
-    case "retrying":
-      return "warning" as const;
-    case "sending":
-      return "info" as const;
-    case "canceled":
-      return "secondary" as const;
-    default:
-      return "outline" as const;
-  }
-}
-
-function StatusIndicator({ status }: { status?: string }) {
-  const colors: Record<string, string> = {
-    sent: "bg-emerald-500",
-    failed: "bg-red-500",
-    retrying: "bg-amber-500",
-    sending: "bg-sky-500",
-    canceled: "bg-zinc-400",
-    queued: "bg-violet-500",
-  };
-  const s = status ?? "queued";
-  return (
-    <span
-      className={cn(
-        "inline-block size-2 rounded-full",
-        colors[s] ?? "bg-violet-500",
-        (s === "sending" || s === "retrying") && "animate-pulse-soft",
-      )}
-    />
-  );
-}
-
-function truncate(str: string, max: number) {
-  return str.length > max ? str.slice(0, max) + "\u2026" : str;
-}
-
-// ---------------------------------------------------------------------------
-// Mail.tm Mercure SSE — real-time push for new messages
-// ---------------------------------------------------------------------------
-
-const MERCURE_HUB = "https://mercure.mail.tm/.well-known/mercure";
-
-function useMailTmLiveSync(
-  inboxes: Array<{ _id: Id<"mailtmInboxes">; accountId: string; token: string }> | undefined,
-  onNewMessage: (inboxId: Id<"mailtmInboxes">) => void,
-  enabled: boolean,
-) {
-  const onNewMessageRef = useRef(onNewMessage);
-  onNewMessageRef.current = onNewMessage;
-
-  // Stable key: only reconnect when inbox set or tokens change
-  const connectionKey = useMemo(
-    () => (inboxes ?? []).map((i) => `${i._id}:${i.token}`).join("|"),
-    [inboxes],
-  );
-
-  useEffect(() => {
-    if (!enabled || !inboxes || inboxes.length === 0) return;
-
-    const controllers: AbortController[] = [];
-
-    for (const inbox of inboxes) {
-      if (!inbox.accountId || !inbox.token) continue;
-
-      const ctrl = new AbortController();
-      controllers.push(ctrl);
-
-      const topic = `/accounts/${inbox.accountId}`;
-      const url = `${MERCURE_HUB}?topic=${encodeURIComponent(topic)}`;
-
-      (async () => {
-        try {
-          const res = await fetch(url, {
-            headers: {
-              Authorization: `Bearer ${inbox.token}`,
-              Accept: "text/event-stream",
-            },
-            signal: ctrl.signal,
-          });
-
-          if (!res.ok || !res.body) return;
-
-          const reader = res.body.getReader();
-          const decoder = new TextDecoder();
-
-          while (!ctrl.signal.aborted) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value, { stream: true });
-            // Any data frame means account activity (new message)
-            if (chunk.includes("data:")) {
-              onNewMessageRef.current(inbox._id);
-            }
-          }
-        } catch {
-          // SSE failed — cron polling handles it as fallback
-        }
-      })();
-    }
-
-    return () => controllers.forEach((c) => c.abort());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, connectionKey]);
-}
 
 // ---------------------------------------------------------------------------
 // Main console
@@ -198,6 +49,8 @@ export default function AutoSendConsole() {
   const processQueue = useAction(api.autosendDemo.processQueue);
   const cleanupOldEmails = useAction(api.autosendDemo.cleanupOldEmails);
   const cleanupAbandonedEmails = useAction(api.autosendDemo.cleanupAbandonedEmails);
+  const executeCleanupOld = useAction(api.autosendDemo.executeCleanupOld);
+  const executeCleanupAbandoned = useAction(api.autosendDemo.executeCleanupAbandoned);
   const createInbox = useAction(api.mailtm.createInbox);
   const syncInbox = useAction(api.mailtm.syncInbox);
   const syncAllInboxes = useAction(api.mailtm.syncAllInboxes);
@@ -224,6 +77,13 @@ export default function AutoSendConsole() {
   const [bulkRecipients, setBulkRecipients] = useState("");
   const [idempotencyPrefix, setIdempotencyPrefix] = useState("");
   const [sendMode, setSendMode] = useState<"single" | "bulk">("single");
+  const [composeMode, setComposeMode] = useState<"content" | "template">("content");
+  const [templateId, setTemplateId] = useState("");
+  const [dynamicData, setDynamicData] = useState("");
+  const [fromOverride, setFromOverride] = useState("");
+  const [replyToOverride, setReplyToOverride] = useState("");
+  const [emailMetadata, setEmailMetadata] = useState("");
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
 
   // Form state — inbox
   const [inboxLabel, setInboxLabel] = useState("QA Inbox");
@@ -231,6 +91,8 @@ export default function AutoSendConsole() {
   // Ops
   const [queueResult, setQueueResult] = useState<QueueResult | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [cleanupOldResult, setCleanupOldResult] = useState<any>(null);
+  const [cleanupAbandonedResult, setCleanupAbandonedResult] = useState<any>(null);
 
   // ---------------------------------------------------------------------------
   // Effects
@@ -351,11 +213,25 @@ export default function AutoSendConsole() {
       toast.error("Recipient required");
       return;
     }
+    let parsedDynamic: unknown;
+    if (composeMode === "template" && dynamicData.trim()) {
+      try { parsedDynamic = JSON.parse(dynamicData); } catch { toast.error("Invalid Dynamic Data JSON"); return; }
+    }
+    let parsedMetadata: unknown;
+    if (emailMetadata.trim()) {
+      try { parsedMetadata = JSON.parse(emailMetadata); } catch { toast.error("Invalid Metadata JSON"); return; }
+    }
     try {
       const result = await sendEmail({
         to: to.trim(),
-        subject,
-        html,
+        subject: composeMode === "content" ? subject : undefined,
+        html: composeMode === "content" ? html : undefined,
+        templateId: composeMode === "template" && templateId.trim() ? templateId.trim() : undefined,
+        dynamicData: parsedDynamic,
+        from: fromOverride.trim() || undefined,
+        replyTo: replyToOverride.trim() || undefined,
+        attachments: attachments.length > 0 ? attachments : undefined,
+        metadata: parsedMetadata,
         idempotencyKey: idempotencyKey.trim() || undefined,
       });
       toast.success(
@@ -364,7 +240,7 @@ export default function AutoSendConsole() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Queue failed");
     }
-  }, [sendEmail, to, subject, html, idempotencyKey]);
+  }, [sendEmail, to, subject, html, idempotencyKey, composeMode, templateId, dynamicData, fromOverride, replyToOverride, emailMetadata, attachments]);
 
   const onQueueBulk = useCallback(async () => {
     const recipients = Array.from(
@@ -379,18 +255,32 @@ export default function AutoSendConsole() {
       toast.error("Add at least one recipient");
       return;
     }
+    let parsedDynamic: unknown;
+    if (composeMode === "template" && dynamicData.trim()) {
+      try { parsedDynamic = JSON.parse(dynamicData); } catch { toast.error("Invalid Dynamic Data JSON"); return; }
+    }
+    let parsedMetadata: unknown;
+    if (emailMetadata.trim()) {
+      try { parsedMetadata = JSON.parse(emailMetadata); } catch { toast.error("Invalid Metadata JSON"); return; }
+    }
     try {
       const result = await sendBulk({
         recipients,
-        subject,
-        html,
+        subject: composeMode === "content" ? subject : undefined,
+        html: composeMode === "content" ? html : undefined,
+        templateId: composeMode === "template" && templateId.trim() ? templateId.trim() : undefined,
+        dynamicData: parsedDynamic,
+        from: fromOverride.trim() || undefined,
+        replyTo: replyToOverride.trim() || undefined,
+        attachments: attachments.length > 0 ? attachments : undefined,
+        metadata: parsedMetadata,
         idempotencyKeyPrefix: idempotencyPrefix.trim() || undefined,
       });
       toast.success(`Queued ${result.acceptedCount} emails`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Bulk queue failed");
     }
-  }, [sendBulk, bulkRecipients, subject, html, idempotencyPrefix]);
+  }, [sendBulk, bulkRecipients, subject, html, idempotencyPrefix, composeMode, templateId, dynamicData, fromOverride, replyToOverride, emailMetadata, attachments]);
 
   const onProcessQueue = useCallback(async () => {
     setProcessing(true);
@@ -418,6 +308,48 @@ export default function AutoSendConsole() {
       toast.error(err instanceof Error ? err.message : "Cleanup failed");
     }
   }, [cleanupOldEmails, cleanupAbandonedEmails]);
+
+  const onExecuteCleanupOld = useCallback(async () => {
+    if (!confirm("Delete old terminal emails older than 7 days? This cannot be undone.")) return;
+    try {
+      const result = await executeCleanupOld({ olderThanMs: 7 * 24 * 60 * 60 * 1000 });
+      setCleanupOldResult(result);
+      toast.success(`Deleted ${result.deletedCount} old emails`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Cleanup failed");
+    }
+  }, [executeCleanupOld]);
+
+  const onExecuteCleanupAbandoned = useCallback(async () => {
+    if (!confirm("Recover abandoned sending emails (stuck >15 min)? They will be re-queued.")) return;
+    try {
+      const result = await executeCleanupAbandoned({ staleAfterMs: 15 * 60 * 1000 });
+      setCleanupAbandonedResult(result);
+      toast.success(`Recovered ${result.recoveredCount} abandoned emails`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Recovery failed");
+    }
+  }, [executeCleanupAbandoned]);
+
+  const onAddFiles = useCallback(async (files: FileList) => {
+    const newItems: AttachmentItem[] = [];
+    for (const file of Array.from(files)) {
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(",")[1] ?? "");
+        };
+        reader.readAsDataURL(file);
+      });
+      newItems.push({
+        filename: file.name,
+        content: base64,
+        contentType: file.type || "application/octet-stream",
+      });
+    }
+    setAttachments((prev) => [...prev, ...newItems]);
+  }, []);
 
   const onCreateInbox = useCallback(async () => {
     try {
@@ -605,6 +537,21 @@ export default function AutoSendConsole() {
             setIdempotencyPrefix={setIdempotencyPrefix}
             sendMode={sendMode}
             setSendMode={setSendMode}
+            composeMode={composeMode}
+            setComposeMode={setComposeMode}
+            templateId={templateId}
+            setTemplateId={setTemplateId}
+            dynamicData={dynamicData}
+            setDynamicData={setDynamicData}
+            fromOverride={fromOverride}
+            setFromOverride={setFromOverride}
+            replyToOverride={replyToOverride}
+            setReplyToOverride={setReplyToOverride}
+            emailMetadata={emailMetadata}
+            setEmailMetadata={setEmailMetadata}
+            attachments={attachments}
+            setAttachments={setAttachments}
+            onAddFiles={onAddFiles}
             onQueueSingle={onQueueSingle}
             onQueueBulk={onQueueBulk}
             onProcessQueue={onProcessQueue}
@@ -635,10 +582,14 @@ export default function AutoSendConsole() {
           <OpsView
             onProcessQueue={onProcessQueue}
             onDryRunCleanup={onDryRunCleanup}
+            onExecuteCleanupOld={onExecuteCleanupOld}
+            onExecuteCleanupAbandoned={onExecuteCleanupAbandoned}
             processing={processing}
             queueResult={queueResult}
             emailCounts={emailCounts}
             config={config}
+            cleanupOldResult={cleanupOldResult}
+            cleanupAbandonedResult={cleanupAbandonedResult}
           />
         )}
         {view === "setup" && (
@@ -660,1024 +611,6 @@ export default function AutoSendConsole() {
           />
         )}
       </div>
-    </div>
-  );
-}
-
-// ===========================================================================
-// SEND VIEW
-// ===========================================================================
-
-function SendView({
-  inboxes,
-  to,
-  setTo,
-  subject,
-  setSubject,
-  html,
-  setHtml,
-  idempotencyKey,
-  setIdempotencyKey,
-  bulkRecipients,
-  setBulkRecipients,
-  idempotencyPrefix,
-  setIdempotencyPrefix,
-  sendMode,
-  setSendMode,
-  onQueueSingle,
-  onQueueBulk,
-  onProcessQueue,
-  processing,
-  demoEmails,
-  emailCounts,
-  onCancel,
-}: {
-  inboxes: any[] | undefined;
-  to: string;
-  setTo: (v: string) => void;
-  subject: string;
-  setSubject: (v: string) => void;
-  html: string;
-  setHtml: (v: string) => void;
-  idempotencyKey: string;
-  setIdempotencyKey: (v: string) => void;
-  bulkRecipients: string;
-  setBulkRecipients: (v: string) => void;
-  idempotencyPrefix: string;
-  setIdempotencyPrefix: (v: string) => void;
-  sendMode: "single" | "bulk";
-  setSendMode: (v: "single" | "bulk") => void;
-  onQueueSingle: () => void;
-  onQueueBulk: () => void;
-  onProcessQueue: () => void;
-  processing: boolean;
-  demoEmails: any[] | undefined;
-  emailCounts: Record<string, number>;
-  onCancel: (emailId: string) => void;
-}) {
-  const [expandedErrors, setExpandedErrors] = useState<Set<string>>(new Set());
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  const toggleError = useCallback((emailId: string) => {
-    setExpandedErrors((prev) => {
-      const next = new Set(prev);
-      if (next.has(emailId)) next.delete(emailId);
-      else next.add(emailId);
-      return next;
-    });
-  }, []);
-
-  const copyError = useCallback((emailId: string, error: string) => {
-    navigator.clipboard.writeText(error);
-    setCopiedId(emailId);
-    setTimeout(() => setCopiedId(null), 2000);
-  }, []);
-
-  return (
-    <div className="flex flex-col lg:flex-row h-full">
-      {/* ── Compose sidebar ── */}
-      <div className="lg:w-[400px] xl:w-[440px] shrink-0 border-b lg:border-b-0 lg:border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-y-auto">
-        <div className="p-5 space-y-5">
-          {/* Mode toggle */}
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-              Compose
-            </h2>
-            <div className="flex rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden">
-              <button
-                onClick={() => setSendMode("single")}
-                className={cn(
-                  "px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
-                  sendMode === "single"
-                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                    : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200",
-                )}
-              >
-                Single
-              </button>
-              <button
-                onClick={() => setSendMode("bulk")}
-                className={cn(
-                  "px-3 py-1.5 text-xs font-medium transition-colors border-l border-zinc-200 dark:border-zinc-700 cursor-pointer",
-                  sendMode === "bulk"
-                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                    : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200",
-                )}
-              >
-                Bulk
-              </button>
-            </div>
-          </div>
-
-          {sendMode === "single" ? (
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Recipient
-                </Label>
-                <Input
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
-                  placeholder="user@example.com"
-                  className="font-mono text-xs"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Idempotency Key
-                  <span className="text-zinc-400 dark:text-zinc-500 ml-1">(optional)</span>
-                </Label>
-                <Input
-                  value={idempotencyKey}
-                  onChange={(e) => setIdempotencyKey(e.target.value)}
-                  placeholder="welcome:user-123"
-                  className="font-mono text-xs"
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs text-zinc-500 dark:text-zinc-400">
-                    Recipients
-                    <span className="text-zinc-400 dark:text-zinc-500 ml-1">(comma or newline)</span>
-                  </Label>
-                  {inboxes && inboxes.length > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 text-[11px] px-2 text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300"
-                      onClick={() => {
-                        const addresses = inboxes.map((i: any) => i.address).join("\n");
-                        setBulkRecipients(addresses);
-                        toast.success(`Added ${inboxes.length} Mail.tm address${inboxes.length > 1 ? "es" : ""}`);
-                      }}
-                    >
-                      <Inbox className="size-3" />
-                      Use Mail.tm inboxes
-                    </Button>
-                  )}
-                </div>
-                <Textarea
-                  value={bulkRecipients}
-                  onChange={(e) => setBulkRecipients(e.target.value)}
-                  placeholder={"user1@example.com\nuser2@example.com"}
-                  rows={4}
-                  className="font-mono text-xs"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Idempotency Prefix
-                  <span className="text-zinc-400 dark:text-zinc-500 ml-1">(optional)</span>
-                </Label>
-                <Input
-                  value={idempotencyPrefix}
-                  onChange={(e) => setIdempotencyPrefix(e.target.value)}
-                  placeholder="campaign-2026-02"
-                  className="font-mono text-xs"
-                />
-              </div>
-            </div>
-          )}
-
-          <Separator />
-
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-zinc-500 dark:text-zinc-400">
-                Subject
-              </Label>
-              <Input
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                className="text-xs"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-zinc-500 dark:text-zinc-400">
-                HTML Body
-              </Label>
-              <Textarea
-                value={html}
-                onChange={(e) => setHtml(e.target.value)}
-                rows={5}
-                className="font-mono text-xs"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 pt-1">
-            <Button
-              size="sm"
-              onClick={sendMode === "single" ? onQueueSingle : onQueueBulk}
-            >
-              <Send className="size-3.5" />
-              {sendMode === "single" ? "Queue Email" : "Queue Bulk"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onProcessQueue}
-              disabled={processing}
-            >
-              <Zap className="size-3.5" />
-              {processing ? "Processing\u2026" : "Process Queue"}
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Delivery feed ── */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Stats strip */}
-        <div className="shrink-0 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-5 py-2.5">
-          <div className="flex items-center gap-5 overflow-x-auto text-xs">
-            <CountChip label="Total" value={emailCounts.total} />
-            <CountChip label="Queued" value={emailCounts.queued} color="bg-violet-500" />
-            <CountChip label="Sending" value={emailCounts.sending} color="bg-sky-500" />
-            <CountChip label="Sent" value={emailCounts.sent} color="bg-emerald-500" />
-            <CountChip label="Failed" value={emailCounts.failed} color="bg-red-500" />
-            <CountChip label="Retrying" value={emailCounts.retrying} color="bg-amber-500" />
-          </div>
-        </div>
-
-        {/* Table */}
-        <div className="flex-1 overflow-auto">
-          <table className="w-full">
-            <thead className="sticky top-0 z-10 bg-zinc-50 dark:bg-zinc-900">
-              <tr className="border-b border-zinc-200 dark:border-zinc-800">
-                {["Status", "Recipient", "Email ID", "Provider ID", "Mode", ""].map(
-                  (h, i) => (
-                    <th
-                      key={h || i}
-                      className={cn(
-                        "text-left py-2.5 px-4 text-xs font-medium text-zinc-500 dark:text-zinc-400",
-                        i === 2 && "hidden md:table-cell",
-                        i === 3 && "hidden lg:table-cell",
-                        i === 4 && "hidden sm:table-cell",
-                        i === 5 && "text-right",
-                      )}
-                    >
-                      {h}
-                    </th>
-                  ),
-                )}
-              </tr>
-            </thead>
-            <tbody className="text-sm">
-              {(!demoEmails || demoEmails.length === 0) ? (
-                <tr>
-                  <td
-                    colSpan={6}
-                    className="text-center py-16 text-zinc-400 dark:text-zinc-500 text-sm"
-                  >
-                    <div className="flex flex-col items-center gap-2">
-                      <Mail className="size-8 text-zinc-300 dark:text-zinc-600" />
-                      <p>No emails queued yet</p>
-                      <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                        Compose an email and hit Queue to get started
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                demoEmails.map((entry, i) => {
-                  const status = entry.status?.status ?? "queued";
-                  const lastError = entry.status?.lastError;
-                  const attemptCount = entry.status?.attemptCount ?? 0;
-                  const maxAttempts = entry.status?.maxAttempts ?? 0;
-                  const canCancel = status === "queued" || status === "retrying";
-                  const hasError = lastError && (status === "failed" || status === "retrying");
-                  return (
-                    <React.Fragment key={entry._id}>
-                      <tr
-                        className={cn(
-                          "hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors",
-                          !hasError && "border-b border-zinc-100 dark:border-zinc-800/50",
-                          i === 0 && "animate-fade-in",
-                        )}
-                      >
-                        <td className="py-2.5 px-4">
-                          <div className="flex items-center gap-2">
-                            <StatusIndicator status={status} />
-                            <Badge variant={statusBadgeVariant(status)} className="text-[11px]">
-                              {status}
-                            </Badge>
-                            {attemptCount > 0 && (
-                              <span className="text-[10px] text-zinc-400 dark:text-zinc-500 tabular-nums">
-                                {attemptCount}/{maxAttempts}
-                              </span>
-                            )}
-                            {hasError && (
-                              <button
-                                onClick={() => toggleError(entry.emailId)}
-                                className="inline-flex items-center gap-0.5 text-[10px] text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 cursor-pointer"
-                              >
-                                <AlertCircle className="size-3" />
-                                <ChevronDown
-                                  className={cn(
-                                    "size-3 transition-transform",
-                                    expandedErrors.has(entry.emailId) && "rotate-180",
-                                  )}
-                                />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-4 text-sm text-zinc-700 dark:text-zinc-300 max-w-[200px] truncate">
-                          {entry.recipient}
-                        </td>
-                        <td className="py-2.5 px-4 font-mono text-xs text-zinc-500 dark:text-zinc-400 hidden md:table-cell max-w-[160px] truncate">
-                          {truncate(entry.emailId, 20)}
-                        </td>
-                        <td className="py-2.5 px-4 text-xs text-zinc-400 dark:text-zinc-500 hidden lg:table-cell max-w-[160px] truncate">
-                          {entry.status?.providerMessageId
-                            ? truncate(entry.status.providerMessageId, 20)
-                            : "\u2014"}
-                        </td>
-                        <td className="py-2.5 px-4 hidden sm:table-cell">
-                          <Badge variant="secondary" className="text-[11px]">
-                            {entry.mode}
-                          </Badge>
-                        </td>
-                        <td className="py-2.5 px-4 text-right">
-                          {canCancel && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => onCancel(entry.emailId)}
-                              className="h-7 text-xs text-zinc-500 hover:text-red-600 dark:hover:text-red-400"
-                            >
-                              <X className="size-3" />
-                              Cancel
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                      {hasError && expandedErrors.has(entry.emailId) && (
-                        <tr className="border-b border-zinc-100 dark:border-zinc-800/50 animate-fade-in">
-                          <td colSpan={6} className="px-4 pb-2.5 pt-0">
-                            <div className="flex items-start gap-2 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 px-3 py-2">
-                              <AlertCircle className="size-3.5 text-red-500 shrink-0 mt-0.5" />
-                              <p className="flex-1 text-xs text-red-700 dark:text-red-400 font-mono break-all leading-relaxed">
-                                {lastError}
-                              </p>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0 shrink-0 text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-300"
-                                onClick={() => copyError(entry.emailId, lastError)}
-                              >
-                                {copiedId === entry.emailId ? (
-                                  <Check className="size-3" />
-                                ) : (
-                                  <Copy className="size-3" />
-                                )}
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CountChip({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: number;
-  color?: string;
-}) {
-  return (
-    <div className="flex items-center gap-1.5 whitespace-nowrap">
-      {color && <span className={cn("size-2 rounded-full", color)} />}
-      <span className="text-zinc-500 dark:text-zinc-400">{label}</span>
-      <span className="font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">
-        {value}
-      </span>
-    </div>
-  );
-}
-
-// ===========================================================================
-// INBOX VIEW
-// ===========================================================================
-
-function InboxView({
-  inboxes,
-  selectedInboxId,
-  setSelectedInboxId,
-  setTo,
-  messages,
-  selectedMessage,
-  selectedMessageId,
-  inboxLabel,
-  setInboxLabel,
-  onCreateInbox,
-  onSyncInbox,
-  onDeleteInbox,
-  onOpenMessage,
-}: {
-  inboxes: any[] | undefined;
-  selectedInboxId: Id<"mailtmInboxes"> | null;
-  setSelectedInboxId: (v: Id<"mailtmInboxes">) => void;
-  setTo: (v: string) => void;
-  messages: any[] | undefined;
-  selectedMessage: any | null;
-  selectedMessageId: string | null;
-  inboxLabel: string;
-  setInboxLabel: (v: string) => void;
-  onCreateInbox: () => void;
-  onSyncInbox: (id: Id<"mailtmInboxes">) => void;
-  onDeleteInbox: (id: Id<"mailtmInboxes">) => void;
-  onOpenMessage: (id: string) => void;
-}) {
-  return (
-    <div className="flex flex-col md:flex-row h-full">
-      {/* ── Inbox sidebar ── */}
-      <div className="md:w-[280px] shrink-0 border-b md:border-b-0 md:border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-y-auto">
-        <div className="p-4 space-y-4">
-          <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-            Mail.tm Inboxes
-          </h2>
-
-          <div className="flex gap-2">
-            <Input
-              value={inboxLabel}
-              onChange={(e) => setInboxLabel(e.target.value)}
-              placeholder="Inbox label"
-              className="text-xs"
-            />
-            <Button size="sm" onClick={onCreateInbox}>
-              <Plus className="size-3.5" />
-              New
-            </Button>
-          </div>
-
-          <div className="space-y-1.5">
-            {(inboxes ?? []).map((inbox) => (
-              <div
-                key={inbox._id}
-                className={cn(
-                  "rounded-lg border p-3 transition-colors cursor-pointer group",
-                  selectedInboxId === inbox._id
-                    ? "border-zinc-900 dark:border-zinc-100 bg-zinc-50 dark:bg-zinc-900"
-                    : "border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900",
-                )}
-              >
-                <button
-                  onClick={() => {
-                    setSelectedInboxId(inbox._id);
-                    setTo(inbox.address);
-                  }}
-                  className="w-full text-left cursor-pointer"
-                >
-                  <p className="text-xs font-medium text-zinc-900 dark:text-zinc-100">
-                    {inbox.label ?? "Inbox"}
-                  </p>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 break-all mt-0.5 font-mono">
-                    {inbox.address}
-                  </p>
-                </button>
-                <div className="mt-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 text-[11px] px-2"
-                    onClick={() => onSyncInbox(inbox._id)}
-                  >
-                    <RefreshCw className="size-3" />
-                    Sync
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 text-[11px] px-2 text-red-500 hover:text-red-600 dark:text-red-400"
-                    onClick={() => onDeleteInbox(inbox._id)}
-                  >
-                    <Trash2 className="size-3" />
-                    Delete
-                  </Button>
-                </div>
-              </div>
-            ))}
-
-            {(!inboxes || inboxes.length === 0) && (
-              <div className="flex flex-col items-center gap-2 py-8 text-center">
-                <Inbox className="size-6 text-zinc-300 dark:text-zinc-600" />
-                <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                  No inboxes yet. Create one to start testing.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Message list + preview ── */}
-      <div className="flex-1 flex flex-col lg:flex-row min-w-0 overflow-hidden">
-        {/* Message list */}
-        <div className="lg:w-[300px] shrink-0 border-b lg:border-b-0 lg:border-r border-zinc-200 dark:border-zinc-800 overflow-y-auto bg-white dark:bg-zinc-950">
-          {selectedInboxId && (
-            <div className="px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-              <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                {messages?.length ?? 0} messages
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 text-[11px] px-2"
-                onClick={() => onSyncInbox(selectedInboxId)}
-              >
-                <RefreshCw className="size-3" />
-                Refresh
-              </Button>
-            </div>
-          )}
-          <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
-            {(messages ?? []).map((msg) => (
-              <button
-                key={msg._id}
-                onClick={() => onOpenMessage(msg.messageId)}
-                className={cn(
-                  "w-full p-3 text-left transition-colors cursor-pointer",
-                  selectedMessageId === msg.messageId
-                    ? "bg-zinc-100 dark:bg-zinc-800"
-                    : "hover:bg-zinc-50 dark:hover:bg-zinc-900",
-                )}
-              >
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
-                  {msg.fromAddress ?? "unknown"}
-                </p>
-                <p className="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate mt-0.5">
-                  {msg.subject ?? "(no subject)"}
-                </p>
-                <p className="text-[11px] text-zinc-400 dark:text-zinc-500 truncate mt-0.5">
-                  {msg.intro ?? ""}
-                </p>
-              </button>
-            ))}
-            {messages?.length === 0 && (
-              <div className="flex flex-col items-center gap-2 py-12 text-center">
-                <Mail className="size-6 text-zinc-300 dark:text-zinc-600" />
-                <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                  No messages. Send an email and sync.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Preview */}
-        <div className="flex-1 overflow-y-auto bg-zinc-50 dark:bg-zinc-900/50">
-          {selectedMessage ? (
-            <div className="p-6 space-y-4 animate-fade-in">
-              <div className="space-y-1">
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  From: {selectedMessage.fromAddress ?? "unknown"}
-                </p>
-                <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
-                  {selectedMessage.subject ?? "(no subject)"}
-                </h2>
-              </div>
-              <Card>
-                <CardContent className="p-4">
-                  <pre className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap overflow-auto max-h-[500px] leading-relaxed font-sans">
-                    {selectedMessage.text ??
-                      selectedMessage.html ??
-                      selectedMessage.intro ??
-                      "No content available."}
-                  </pre>
-                </CardContent>
-              </Card>
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center space-y-2">
-                <ChevronRight className="size-6 text-zinc-300 dark:text-zinc-600 mx-auto" />
-                <p className="text-sm text-zinc-400 dark:text-zinc-500">
-                  Select a message to view
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ===========================================================================
-// OPS VIEW
-// ===========================================================================
-
-function OpsView({
-  onProcessQueue,
-  onDryRunCleanup,
-  processing,
-  queueResult,
-  emailCounts,
-  config,
-}: {
-  onProcessQueue: () => void;
-  onDryRunCleanup: () => void;
-  processing: boolean;
-  queueResult: QueueResult | null;
-  emailCounts: Record<string, number>;
-  config: any;
-}) {
-  return (
-    <div className="p-5 sm:p-8 max-w-4xl mx-auto space-y-6">
-      {/* Overview */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Delivery Overview</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-4">
-            {(
-              [
-                ["Total", emailCounts.total, null],
-                ["Queued", emailCounts.queued, "text-violet-600 dark:text-violet-400"],
-                ["Sending", emailCounts.sending, "text-sky-600 dark:text-sky-400"],
-                ["Sent", emailCounts.sent, "text-emerald-600 dark:text-emerald-400"],
-                ["Failed", emailCounts.failed, "text-red-600 dark:text-red-400"],
-                ["Retrying", emailCounts.retrying, "text-amber-600 dark:text-amber-400"],
-              ] as const
-            ).map(([label, value, color]) => (
-              <div key={label}>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">{label}</p>
-                <p
-                  className={cn(
-                    "text-2xl font-semibold tabular-nums mt-0.5",
-                    color ?? "text-zinc-900 dark:text-zinc-100",
-                  )}
-                >
-                  {value}
-                </p>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Queue runner */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Zap className="size-4 text-amber-500" />
-              Queue Runner
-            </CardTitle>
-            <CardDescription>
-              Dispatch queued and retrying jobs through the provider adapter.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Button onClick={onProcessQueue} disabled={processing}>
-              <Zap className="size-3.5" />
-              {processing ? "Processing\u2026" : "Process Queue Now"}
-            </Button>
-
-            {queueResult && (
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-3 space-y-2 animate-fade-in">
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500 dark:text-zinc-400">Processed</span>
-                    <span className="font-medium tabular-nums">{queueResult.processedCount}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500 dark:text-zinc-400">Sent</span>
-                    <span className="font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
-                      {queueResult.sentCount}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500 dark:text-zinc-400">Retried</span>
-                    <span className="font-medium tabular-nums text-amber-600 dark:text-amber-400">
-                      {queueResult.retriedCount}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500 dark:text-zinc-400">Failed</span>
-                    <span className="font-medium tabular-nums text-red-600 dark:text-red-400">
-                      {queueResult.failedCount}
-                    </span>
-                  </div>
-                </div>
-                {queueResult.hasMoreDue && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                    <CircleDot className="size-3" />
-                    More items due \u2014 run again
-                  </p>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Maintenance */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm flex items-center gap-2">
-              <RefreshCw className="size-4 text-sky-500" />
-              Maintenance
-            </CardTitle>
-            <CardDescription>
-              Preview cleanup impact before deleting anything.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Button variant="outline" onClick={onDryRunCleanup}>
-              Run Cleanup Dry-Run
-            </Button>
-
-            <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-3 space-y-2">
-              <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                Cleanup Thresholds
-              </p>
-              <div className="text-sm space-y-1.5">
-                <div className="flex justify-between">
-                  <span className="text-zinc-500 dark:text-zinc-400">Old terminal emails</span>
-                  <span className="font-medium text-zinc-900 dark:text-zinc-100">7 days</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500 dark:text-zinc-400">Abandoned sending</span>
-                  <span className="font-medium text-zinc-900 dark:text-zinc-100">15 minutes</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Runtime params */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Runtime Parameters</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {(
-              [
-                ["Rate Limit", `${config?.rateLimitRps ?? "\u2014"} rps`],
-                ["Max Attempts", config?.maxAttempts ?? "\u2014"],
-                ["Batch Size", config?.sendBatchSize ?? "\u2014"],
-                ["Compatibility", config?.providerCompatibilityMode ?? "\u2014"],
-              ] as const
-            ).map(([label, value]) => (
-              <div key={label}>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">{label}</p>
-                <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mt-0.5">
-                  {value}
-                </p>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// ===========================================================================
-// SETUP VIEW
-// ===========================================================================
-
-function SetupView({
-  config,
-  inboxes,
-  defaultFrom,
-  setDefaultFrom,
-  defaultReplyTo,
-  setDefaultReplyTo,
-  sandboxTo,
-  setSandboxTo,
-  testMode,
-  onToggleTestMode,
-  providerCompatibilityMode,
-  setProviderCompatibilityMode,
-  onSyncSecrets,
-  onSaveConfig,
-}: {
-  config: any;
-  inboxes: any[] | undefined;
-  defaultFrom: string;
-  setDefaultFrom: (v: string) => void;
-  defaultReplyTo: string;
-  setDefaultReplyTo: (v: string) => void;
-  sandboxTo: string;
-  setSandboxTo: (v: string) => void;
-  testMode: boolean;
-  onToggleTestMode: (v: boolean) => void;
-  providerCompatibilityMode: "strict" | "lenient";
-  setProviderCompatibilityMode: (v: "strict" | "lenient") => void;
-  onSyncSecrets: () => void;
-  onSaveConfig: () => void;
-}) {
-  return (
-    <div className="p-5 sm:p-8 max-w-2xl mx-auto space-y-6">
-      {/* Secrets */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Key className="size-4 text-amber-500" />
-            Environment Secrets
-          </CardTitle>
-          <CardDescription>
-            Synced server-side from Convex environment variables.
-            Expected: <code className="text-zinc-700 dark:text-zinc-300">AUTOSEND_API_KEY</code>{" "}
-            and <code className="text-zinc-700 dark:text-zinc-300">AUTOSEND_WEBHOOK_SECRET</code>.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-5">
-            <div className="flex items-center gap-2">
-              <span
-                className={cn(
-                  "size-2.5 rounded-full",
-                  config?.hasApiKey ? "bg-emerald-500" : "bg-red-500 animate-pulse-soft",
-                )}
-              />
-              <span className="text-sm text-zinc-700 dark:text-zinc-300">API Key</span>
-              {config?.hasApiKey ? (
-                <Badge variant="success" className="text-[10px]">Active</Badge>
-              ) : (
-                <Badge variant="destructive" className="text-[10px]">Missing</Badge>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <span
-                className={cn(
-                  "size-2.5 rounded-full",
-                  config?.hasWebhookSecret ? "bg-emerald-500" : "bg-red-500 animate-pulse-soft",
-                )}
-              />
-              <span className="text-sm text-zinc-700 dark:text-zinc-300">Webhook Secret</span>
-              {config?.hasWebhookSecret ? (
-                <Badge variant="success" className="text-[10px]">Active</Badge>
-              ) : (
-                <Badge variant="destructive" className="text-[10px]">Missing</Badge>
-              )}
-            </div>
-          </div>
-
-          <Button variant="outline" onClick={onSyncSecrets}>
-            <Shield className="size-3.5" />
-            Sync Secrets From Env
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Runtime config */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Settings2 className="size-4 text-sky-500" />
-            Runtime Settings
-          </CardTitle>
-          <CardDescription>
-            Non-sensitive controls. Changes apply immediately.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Default From</Label>
-              <Input
-                value={defaultFrom}
-                onChange={(e) => setDefaultFrom(e.target.value)}
-                placeholder="noreply@example.com"
-                className="font-mono text-xs"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Default Reply-To</Label>
-              <Input
-                value={defaultReplyTo}
-                onChange={(e) => setDefaultReplyTo(e.target.value)}
-                placeholder="support@example.com"
-                className="font-mono text-xs"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">Sandbox Recipients (comma separated)</Label>
-                {inboxes && inboxes.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 text-[11px] px-2 text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300"
-                    onClick={() => {
-                      const addresses = inboxes.map((i) => i.address).join(", ");
-                      setSandboxTo(addresses);
-                      toast.success(`Populated ${inboxes.length} Mail.tm address${inboxes.length > 1 ? "es" : ""}`);
-                    }}
-                  >
-                    <Inbox className="size-3" />
-                    Use Mail.tm inboxes
-                  </Button>
-                )}
-              </div>
-              <Input
-                value={sandboxTo}
-                onChange={(e) => setSandboxTo(e.target.value)}
-                placeholder="qa1@mail.tm, qa2@mail.tm"
-                className="font-mono text-xs"
-              />
-              {testMode && !sandboxTo.trim() && (
-                <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                  <CircleDot className="size-3" />
-                  Test mode requires at least one sandbox recipient
-                </p>
-              )}
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="flex flex-wrap items-center gap-5">
-            <label className="flex items-center gap-2 cursor-pointer text-sm">
-              <input
-                type="checkbox"
-                checked={testMode}
-                onChange={(e) => onToggleTestMode(e.target.checked)}
-                className="rounded border-zinc-300 dark:border-zinc-600 accent-zinc-900 dark:accent-zinc-100"
-              />
-              <span className="text-zinc-700 dark:text-zinc-300">Test Mode</span>
-              {testMode && (
-                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                  ACTIVE \u2014 all emails redirect to sandbox
-                </span>
-              )}
-            </label>
-
-            <div className="flex items-center gap-2 text-sm">
-              <Label className="text-xs text-zinc-500 dark:text-zinc-400">
-                Compatibility
-              </Label>
-              <select
-                value={providerCompatibilityMode}
-                onChange={(e) =>
-                  setProviderCompatibilityMode(e.target.value as "strict" | "lenient")
-                }
-                className="rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-zinc-400"
-              >
-                <option value="strict">Strict</option>
-                <option value="lenient">Lenient</option>
-              </select>
-            </div>
-          </div>
-
-          <Button onClick={onSaveConfig}>
-            Save Settings
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Read-only defaults */}
-      <Card className="opacity-60">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-xs text-zinc-500 dark:text-zinc-400">
-            Defaults (read-only)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-3 gap-4 text-sm">
-            <div>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">Rate Limit</p>
-              <p className="font-medium text-zinc-700 dark:text-zinc-300 mt-0.5">
-                {config?.rateLimitRps ?? "\u2014"} rps
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">Max Attempts</p>
-              <p className="font-medium text-zinc-700 dark:text-zinc-300 mt-0.5">
-                {config?.maxAttempts ?? "\u2014"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">Batch Size</p>
-              <p className="font-medium text-zinc-700 dark:text-zinc-300 mt-0.5">
-                {config?.sendBatchSize ?? "\u2014"}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

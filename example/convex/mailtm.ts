@@ -49,6 +49,27 @@ function normalizeHtml(value: unknown): string | undefined {
   return undefined;
 }
 
+type NormalizedAttachment = {
+  id: string;
+  filename: string;
+  contentType?: string;
+  size?: number;
+  downloadUrl?: string;
+};
+
+function normalizeAttachments(raw: unknown): NormalizedAttachment[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item) => item && typeof item === "object" && typeof item.id === "string")
+    .map((item: any) => ({
+      id: String(item.id),
+      filename: typeof item.filename === "string" ? item.filename : "attachment",
+      ...(typeof item.contentType === "string" ? { contentType: item.contentType } : {}),
+      ...(typeof item.size === "number" ? { size: item.size } : {}),
+      ...(typeof item.downloadUrl === "string" ? { downloadUrl: item.downloadUrl } : {}),
+    }));
+}
+
 function coerceBoolean(value: unknown): boolean | undefined {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {
@@ -115,6 +136,10 @@ function selectDomain(records: MailTmDomainRecord[]): string | null {
   return candidates[0]?.domain ?? null;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function apiJson<T>(
   path: string,
   init: RequestInit,
@@ -127,28 +152,42 @@ async function apiJson<T>(
     ...(init.headers as Record<string, string> | undefined),
   };
 
-  const response = await fetch(`${MAILTM_BASE_URL}${path}`, {
-    ...init,
-    headers,
-  });
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const response = await fetch(`${MAILTM_BASE_URL}${path}`, {
+      ...init,
+      headers,
+    });
 
-  let parsed: any = undefined;
-  try {
-    parsed = await response.json();
-  } catch {
-    parsed = undefined;
+    let parsed: any = undefined;
+    try {
+      parsed = await response.json();
+    } catch {
+      parsed = undefined;
+    }
+
+    if (response.status === 429 && attempt < maxAttempts) {
+      const retryAfter = Number(response.headers.get("retry-after"));
+      const delayMs = !Number.isNaN(retryAfter) && retryAfter > 0
+        ? retryAfter * 1000
+        : 1000 * attempt;
+      await sleep(delayMs);
+      continue;
+    }
+
+    if (!response.ok) {
+      const detail =
+        parsed?.detail ?? parsed?.message ?? `mail.tm request failed with ${response.status}`;
+      throw new Error(String(detail));
+    }
+
+    return {
+      status: response.status,
+      data: parsed as T,
+    };
   }
 
-  if (!response.ok) {
-    const detail =
-      parsed?.detail ?? parsed?.message ?? `mail.tm request failed with ${response.status}`;
-    throw new Error(String(detail));
-  }
-
-  return {
-    status: response.status,
-    data: parsed as T,
-  };
+  throw new Error(`mail.tm request failed: rate limited after ${maxAttempts} attempts`);
 }
 
 async function fetchToken(address: string, password: string): Promise<string> {
@@ -278,7 +317,7 @@ export const createInbox = action({
       throw new Error("mail.tm did not return a usable domain");
     }
 
-    const localPart = `autosend-${Date.now().toString(36)}-${randomString(5)}`;
+    const localPart = `autosend-${randomString(5)}`;
     const address = `${localPart}@${domain}`;
     const password = `A1!${randomString(12)}`;
 
@@ -374,6 +413,14 @@ export const fetchMessage = action({
     text?: string;
     html?: string;
     seen: boolean;
+    hasAttachments: boolean;
+    attachments: Array<{
+      id: string;
+      filename: string;
+      contentType?: string;
+      size?: number;
+      downloadUrl?: string;
+    }>;
   }> => {
     const inbox = await ctx.runQuery(internal.mailtm.getInboxInternal, {
       inboxId: args.inboxId,
@@ -401,6 +448,9 @@ export const fetchMessage = action({
       now: Date.now(),
     });
 
+    const attachments = normalizeAttachments(detail.data?.attachments);
+    const hasAttachments = Boolean(detail.data?.hasAttachments) || attachments.length > 0;
+
     await ctx.runMutation(internal.mailtm.upsertMessageDetailsInternal, {
       inboxId: args.inboxId,
       messageId: args.messageId,
@@ -412,6 +462,8 @@ export const fetchMessage = action({
       receivedAt: messageTimestamp(detail.data?.createdAt),
       text: typeof detail.data?.text === "string" ? detail.data.text : undefined,
       html: normalizeHtml(detail.data?.html),
+      hasAttachments,
+      attachments,
       now: Date.now(),
     });
 
@@ -422,6 +474,8 @@ export const fetchMessage = action({
       text: typeof detail.data?.text === "string" ? detail.data.text : undefined,
       html: normalizeHtml(detail.data?.html),
       seen: Boolean(detail.data?.seen),
+      hasAttachments,
+      attachments,
     };
   },
 });
@@ -655,6 +709,18 @@ export const upsertMessageDetailsInternal = internalMutation({
     text: v.optional(v.string()),
     html: v.optional(v.string()),
     seen: v.boolean(),
+    hasAttachments: v.optional(v.boolean()),
+    attachments: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          filename: v.string(),
+          contentType: v.optional(v.string()),
+          size: v.optional(v.number()),
+          downloadUrl: v.optional(v.string()),
+        }),
+      ),
+    ),
     receivedAt: v.number(),
     now: v.number(),
   },
@@ -665,25 +731,8 @@ export const upsertMessageDetailsInternal = internalMutation({
       .withIndex("by_messageId", (q) => q.eq("messageId", args.messageId))
       .unique();
 
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        inboxId: args.inboxId,
-        fromAddress: args.fromAddress,
-        fromName: args.fromName,
-        subject: args.subject,
-        intro: args.intro,
-        text: args.text,
-        html: args.html,
-        seen: args.seen,
-        receivedAt: args.receivedAt,
-        updatedAt: args.now,
-      });
-      return null;
-    }
-
-    await ctx.db.insert("mailtmMessages", {
+    const patch = {
       inboxId: args.inboxId,
-      messageId: args.messageId,
       fromAddress: args.fromAddress,
       fromName: args.fromName,
       subject: args.subject,
@@ -691,8 +740,20 @@ export const upsertMessageDetailsInternal = internalMutation({
       text: args.text,
       html: args.html,
       seen: args.seen,
+      hasAttachments: args.hasAttachments,
+      attachments: args.attachments,
       receivedAt: args.receivedAt,
       updatedAt: args.now,
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, patch);
+      return null;
+    }
+
+    await ctx.db.insert("mailtmMessages", {
+      ...patch,
+      messageId: args.messageId,
     });
 
     return null;

@@ -34,6 +34,18 @@ export default defineSchema({
     text: v.optional(v.string()),
     html: v.optional(v.string()),
     seen: v.boolean(),
+    hasAttachments: v.optional(v.boolean()),
+    attachments: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          filename: v.string(),
+          contentType: v.optional(v.string()),
+          size: v.optional(v.number()),
+          downloadUrl: v.optional(v.string()),
+        }),
+      ),
+    ),
     receivedAt: v.number(),
     updatedAt: v.number(),
   })
