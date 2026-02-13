@@ -33,13 +33,15 @@ export const abandonedSendingBatch = internalQuery({
   handler: async (ctx, args) => {
     const results: { emailId: string }[] = [];
 
-    const dbQuery = ctx.db.query("emails").withIndex("by_updatedAt").order("asc");
+    const dbQuery = ctx.db
+      .query("emails")
+      .withIndex("by_status_nextAttemptAt", (q) => q.eq("status", "sending"));
 
     for await (const email of dbQuery) {
-      if (email.updatedAt > args.staleBefore) break;
-      if (email.status !== "sending") continue;
-      results.push({ emailId: email.emailId });
-      if (results.length >= args.limit) break;
+      if (email.updatedAt <= args.staleBefore) {
+        results.push({ emailId: email.emailId });
+        if (results.length >= args.limit) break;
+      }
     }
 
     return results;

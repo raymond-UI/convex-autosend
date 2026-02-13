@@ -17,6 +17,24 @@ export const status = query({
   },
 });
 
+export const statusBatch = query({
+  args: {
+    emailIds: v.array(v.string()),
+  },
+  returns: v.array(v.union(emailDocValidator, v.null())),
+  handler: async (ctx, args) => {
+    return await Promise.all(
+      args.emailIds.map(async (emailId) => {
+        const email = await ctx.db
+          .query("emails")
+          .withIndex("by_emailId", (q) => q.eq("emailId", emailId))
+          .unique();
+        return email ?? null;
+      }),
+    );
+  },
+});
+
 export const getByEmailId = internalQuery({
   args: {
     emailId: v.string(),

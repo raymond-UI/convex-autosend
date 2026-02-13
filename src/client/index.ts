@@ -123,6 +123,10 @@ export class AutoSend {
     return await ctx.runQuery(this.component.queries.status, args);
   }
 
+  async statusBatch(ctx: QueryCtx, args: { emailIds: string[] }) {
+    return await ctx.runQuery(this.component.queries.statusBatch, args);
+  }
+
   async listEvents(
     ctx: QueryCtx,
     args: { emailId: string; limit?: number },

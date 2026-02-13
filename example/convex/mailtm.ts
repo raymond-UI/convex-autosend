@@ -250,11 +250,12 @@ async function listRemoteMessagesWithFreshToken(args: {
 export const listInboxes = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db
+    const inboxes = await ctx.db
       .query("mailtmInboxes")
       .withIndex("by_createdAt")
       .order("desc")
-      .collect();
+      .take(50);
+    return inboxes.map(({ password, token, ...rest }) => rest);
   },
 });
 
@@ -633,6 +634,7 @@ export const setInboxTokenInternal = internalMutation({
   handler: async (ctx, args) => {
     const inbox = await ctx.db.get(args.inboxId);
     if (!inbox) return null;
+    if (inbox.token === args.token) return null;
 
     await ctx.db.patch(inbox._id, {
       token: args.token,
@@ -661,11 +663,16 @@ export const upsertMessageSummariesInternal = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const existingMessages = await ctx.db
+      .query("mailtmMessages")
+      .withIndex("by_inboxId_receivedAt", (q) => q.eq("inboxId", args.inboxId))
+      .collect();
+    const existingByMessageId = new Map(
+      existingMessages.map((m) => [m.messageId, m]),
+    );
+
     for (const message of args.messages) {
-      const existing = await ctx.db
-        .query("mailtmMessages")
-        .withIndex("by_messageId", (q) => q.eq("messageId", message.messageId))
-        .unique();
+      const existing = existingByMessageId.get(message.messageId);
 
       if (existing) {
         await ctx.db.patch(existing._id, {

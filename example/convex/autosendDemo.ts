@@ -201,17 +201,14 @@ export const listDemoEmails = query({
       .order("desc")
       .take(limit);
 
-    const enriched = await Promise.all(
-      entries.map(async (entry) => {
-        const status = await autosend.status(ctx, { emailId: entry.emailId });
-        return {
-          ...entry,
-          status,
-        };
-      }),
-    );
+    const statuses = await autosend.statusBatch(ctx, {
+      emailIds: entries.map((e) => e.emailId),
+    });
 
-    return enriched;
+    return entries.map((entry, i) => ({
+      ...entry,
+      status: statuses[i] ?? null,
+    }));
   },
 });
 
