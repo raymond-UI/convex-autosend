@@ -296,6 +296,8 @@ export const deleteInbox = mutation({
   },
 });
 
+const MAX_INBOXES = 5;
+
 export const createInbox = action({
   args: {
     label: v.optional(v.string()),
@@ -303,9 +305,14 @@ export const createInbox = action({
   handler: async (ctx, args): Promise<{
     inboxId: Id<"mailtmInboxes">;
     address: string;
-    password: string;
     accountId: string;
   }> => {
+    // Cap the number of active inboxes to prevent resource exhaustion.
+    const existingIds = await ctx.runQuery(internal.mailtm.listInboxIdsInternal, {});
+    if (existingIds.length >= MAX_INBOXES) {
+      throw new Error(`Demo is limited to ${MAX_INBOXES} inboxes. Delete one to create another.`);
+    }
+
     const domainsResult = await apiJson<unknown>(
       "/domains?page=1",
       { method: "GET" },
@@ -347,7 +354,6 @@ export const createInbox = action({
     return {
       inboxId,
       address,
-      password,
       accountId: accountResult.data.id,
     };
   },
@@ -702,6 +708,41 @@ export const upsertMessageSummariesInternal = internalMutation({
     }
 
     return null;
+  },
+});
+
+const INBOX_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+export const cleanupOldInboxes = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - INBOX_MAX_AGE_MS;
+
+    const oldInboxes = await ctx.db
+      .query("mailtmInboxes")
+      .withIndex("by_createdAt", (q) => q.lt("createdAt", cutoff))
+      .collect();
+
+    let deletedMessages = 0;
+
+    for (const inbox of oldInboxes) {
+      const messages = await ctx.db
+        .query("mailtmMessages")
+        .withIndex("by_inboxId_receivedAt", (q) => q.eq("inboxId", inbox._id))
+        .collect();
+
+      for (const message of messages) {
+        await ctx.db.delete(message._id);
+        deletedMessages++;
+      }
+
+      await ctx.db.delete(inbox._id);
+    }
+
+    return {
+      deletedInboxes: oldInboxes.length,
+      deletedMessages,
+    };
   },
 });
 

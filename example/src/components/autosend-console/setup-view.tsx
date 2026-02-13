@@ -21,9 +21,7 @@ export function SetupView({
   config,
   inboxes,
   defaultFrom,
-  setDefaultFrom,
   defaultReplyTo,
-  setDefaultReplyTo,
   sandboxTo,
   setSandboxTo,
   testMode,
@@ -36,9 +34,7 @@ export function SetupView({
   config: any;
   inboxes: any[] | undefined;
   defaultFrom: string;
-  setDefaultFrom: (v: string) => void;
   defaultReplyTo: string;
-  setDefaultReplyTo: (v: string) => void;
   sandboxTo: string;
   setSandboxTo: (v: string) => void;
   testMode: boolean;
@@ -119,18 +115,16 @@ export function SetupView({
               <Label className="text-xs">Default From</Label>
               <Input
                 value={defaultFrom}
-                onChange={(e) => setDefaultFrom(e.target.value)}
-                placeholder="noreply@example.com"
-                className="font-mono text-xs"
+                readOnly
+                className="font-mono text-xs bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 cursor-default"
               />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Default Reply-To</Label>
               <Input
                 value={defaultReplyTo}
-                onChange={(e) => setDefaultReplyTo(e.target.value)}
-                placeholder="support@example.com"
-                className="font-mono text-xs"
+                readOnly
+                className="font-mono text-xs bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 cursor-default"
               />
             </div>
             <div className="space-y-1.5">
@@ -180,7 +174,7 @@ export function SetupView({
               <span className="text-zinc-700 dark:text-zinc-300">Test Mode</span>
               {testMode && (
                 <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                  ACTIVE \u2014 all emails redirect to sandbox
+                  ACTIVE — all emails redirect to sandbox
                 </span>
               )}
             </label>

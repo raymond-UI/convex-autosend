@@ -14,45 +14,12 @@ import {
 
 import type { QueueResult } from "./shared";
 
-const DURATION_OPTIONS = [
-  { label: "1 day", ms: 86_400_000 },
-  { label: "3 days", ms: 259_200_000 },
-  { label: "7 days", ms: 604_800_000 },
-  { label: "14 days", ms: 1_209_600_000 },
-  { label: "30 days", ms: 2_592_000_000 },
-];
-
-const STALE_OPTIONS = [
-  { label: "5 min", ms: 300_000 },
-  { label: "15 min", ms: 900_000 },
-  { label: "30 min", ms: 1_800_000 },
-  { label: "1 hour", ms: 3_600_000 },
-];
-
-const BATCH_OPTIONS = [50, 100, 200, 500];
-
-function ThresholdSelect({
-  value,
-  options,
-  onChange,
-}: {
-  value: number | undefined;
-  options: { label: string; ms: number }[];
-  onChange: (ms: number) => void;
-}) {
-  return (
-    <select
-      className="bg-transparent text-right font-medium text-zinc-900 dark:text-zinc-100 text-sm border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-zinc-400"
-      value={value ?? ""}
-      onChange={(e) => onChange(Number(e.target.value))}
-    >
-      {options.map((opt) => (
-        <option key={opt.ms} value={opt.ms}>
-          {opt.label}
-        </option>
-      ))}
-    </select>
-  );
+function formatDuration(ms: number | undefined): string {
+  if (ms == null) return "\u2014";
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+  if (ms < 3_600_000) return `${Math.round(ms / 60_000)} min`;
+  if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)}h`;
+  return `${Math.round(ms / 86_400_000)}d`;
 }
 
 export function OpsView({
@@ -61,7 +28,6 @@ export function OpsView({
   onExecuteCleanupOld,
   onExecuteCleanupAbandoned,
   onCleanupDeliveries,
-  onUpdateThreshold,
   processing,
   cleanupRunning,
   queueResult,
@@ -78,7 +44,6 @@ export function OpsView({
   onExecuteCleanupOld: () => void;
   onExecuteCleanupAbandoned: () => void;
   onCleanupDeliveries: () => void;
-  onUpdateThreshold: (field: string, value: number) => void;
   processing: boolean;
   cleanupRunning: boolean;
   queueResult: QueueResult | null;
@@ -224,46 +189,32 @@ export function OpsView({
 
             <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-3 space-y-2">
               <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                Cleanup Thresholds
+                Cleanup Thresholds (read-only)
               </p>
               <div className="text-sm space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-500 dark:text-zinc-400">Old terminal emails</span>
-                  <ThresholdSelect
-                    value={config?.cleanupOldEmailsMs}
-                    options={DURATION_OPTIONS}
-                    onChange={(ms) => onUpdateThreshold("cleanupOldEmailsMs", ms)}
-                  />
+                  <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                    {formatDuration(config?.cleanupOldEmailsMs)}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-500 dark:text-zinc-400">Abandoned sending</span>
-                  <ThresholdSelect
-                    value={config?.cleanupAbandonedMs}
-                    options={STALE_OPTIONS}
-                    onChange={(ms) => onUpdateThreshold("cleanupAbandonedMs", ms)}
-                  />
+                  <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                    {formatDuration(config?.cleanupAbandonedMs)}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-500 dark:text-zinc-400">Webhook deliveries</span>
-                  <ThresholdSelect
-                    value={config?.cleanupDeliveriesMs}
-                    options={DURATION_OPTIONS}
-                    onChange={(ms) => onUpdateThreshold("cleanupDeliveriesMs", ms)}
-                  />
+                  <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                    {formatDuration(config?.cleanupDeliveriesMs)}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-500 dark:text-zinc-400">Cleanup batch size</span>
-                  <select
-                    className="bg-transparent text-right font-medium text-zinc-900 dark:text-zinc-100 text-sm border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-zinc-400"
-                    value={config?.cleanupBatchSize ?? ""}
-                    onChange={(e) => onUpdateThreshold("cleanupBatchSize", Number(e.target.value))}
-                  >
-                    {BATCH_OPTIONS.map((size) => (
-                      <option key={size} value={size}>
-                        {size}
-                      </option>
-                    ))}
-                  </select>
+                  <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                    {config?.cleanupBatchSize ?? "\u2014"}
+                  </span>
                 </div>
               </div>
             </div>

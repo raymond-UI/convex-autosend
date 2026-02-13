@@ -7,7 +7,6 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
-  Inbox,
   Link2,
   Mail,
   Paperclip,
@@ -82,6 +81,7 @@ export function SendView({
   onQueueSingle,
   onQueueBulk,
   onProcessQueue,
+  onCreateInbox,
   processing,
   demoEmails,
   emailCounts,
@@ -133,6 +133,7 @@ export function SendView({
   onQueueSingle: () => void;
   onQueueBulk: () => void;
   onProcessQueue: () => void;
+  onCreateInbox: () => void;
   processing: boolean;
   demoEmails: any[] | undefined;
   emailCounts: Record<string, number>;
@@ -232,14 +233,35 @@ export function SendView({
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Recipient
+                  Recipient (Mail.tm inbox)
                 </Label>
-                <Input
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
-                  placeholder="user@example.com"
-                  className="font-mono text-xs"
-                />
+                {inboxes && inboxes.length > 0 ? (
+                  <select
+                    value={to}
+                    onChange={(e) => setTo(e.target.value)}
+                    className="w-full rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 font-mono text-xs text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-zinc-400"
+                  >
+                    <option value="">Select an inbox…</option>
+                    {inboxes.map((inbox: any) => (
+                      <option key={inbox._id} value={inbox.address}>
+                        {inbox.label ? `${inbox.label} — ${inbox.address}` : inbox.address}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-xs text-zinc-400 dark:text-zinc-500 py-2">
+                    No inboxes yet.
+                  </p>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-[11px] px-2 text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300"
+                  onClick={onCreateInbox}
+                >
+                  <Plus className="size-3" />
+                  New Mail.tm Inbox
+                </Button>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-zinc-500 dark:text-zinc-400">
@@ -257,34 +279,59 @@ export function SendView({
           ) : (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs text-zinc-500 dark:text-zinc-400">
-                    Recipients
-                    <span className="text-zinc-400 dark:text-zinc-500 ml-1">(comma or newline)</span>
-                  </Label>
-                  {inboxes && inboxes.length > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 text-[11px] px-2 text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300"
-                      onClick={() => {
-                        const addresses = inboxes.map((i: any) => i.address).join("\n");
-                        setBulkRecipients(addresses);
-                        toast.success(`Added ${inboxes.length} Mail.tm address${inboxes.length > 1 ? "es" : ""}`);
-                      }}
-                    >
-                      <Inbox className="size-3" />
-                      Use Mail.tm inboxes
-                    </Button>
-                  )}
-                </div>
-                <Textarea
-                  value={bulkRecipients}
-                  onChange={(e) => setBulkRecipients(e.target.value)}
-                  placeholder={"user1@example.com\nuser2@example.com"}
-                  rows={4}
-                  className="font-mono text-xs"
-                />
+                <Label className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Recipients (Mail.tm inboxes)
+                </Label>
+                {inboxes && inboxes.length > 0 ? (
+                  <div className="space-y-1 rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-2">
+                    {inboxes.map((inbox: any) => {
+                      const selected = bulkRecipients.includes(inbox.address);
+                      return (
+                        <label
+                          key={inbox._id}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                const updated = bulkRecipients.trim()
+                                  ? `${bulkRecipients}\n${inbox.address}`
+                                  : inbox.address;
+                                setBulkRecipients(updated);
+                              } else {
+                                const updated = bulkRecipients
+                                  .split(/[\n,]/)
+                                  .map((s) => s.trim())
+                                  .filter((s) => s && s !== inbox.address)
+                                  .join("\n");
+                                setBulkRecipients(updated);
+                              }
+                            }}
+                            className="rounded border-zinc-300 dark:border-zinc-600 accent-zinc-900 dark:accent-zinc-100"
+                          />
+                          <span className="font-mono text-xs text-zinc-700 dark:text-zinc-300">
+                            {inbox.label ? `${inbox.label} — ${inbox.address}` : inbox.address}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-zinc-400 dark:text-zinc-500 py-2">
+                    No inboxes yet.
+                  </p>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-[11px] px-2 text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300"
+                  onClick={onCreateInbox}
+                >
+                  <Plus className="size-3" />
+                  New Mail.tm Inbox
+                </Button>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-zinc-500 dark:text-zinc-400">

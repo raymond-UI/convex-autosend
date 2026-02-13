@@ -45,4 +45,19 @@ crons.daily(
   {},
 );
 
+// Clean up demo-specific data (demoEmails, mailtm inboxes/messages) older than 24h.
+crons.daily(
+  "cleanup demo data",
+  { hourUTC: 4, minuteUTC: 0 },
+  api.autosendDemo.cleanupDemoData,
+  {},
+);
+
+crons.daily(
+  "cleanup old mailtm inboxes",
+  { hourUTC: 4, minuteUTC: 15 },
+  api.mailtm.cleanupOldInboxes,
+  {},
+);
+
 export default crons;

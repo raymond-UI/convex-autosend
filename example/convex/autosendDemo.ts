@@ -16,6 +16,24 @@ const emailRecipientValidator = v.object({
   name: v.optional(v.string()),
 });
 
+/**
+ * Validates that every email address belongs to a registered Mail.tm inbox.
+ * This prevents the demo from being used to send emails to arbitrary addresses.
+ */
+async function requireMailtmRecipients(ctx: any, addresses: string[]) {
+  for (const address of addresses) {
+    const inbox = await ctx.db
+      .query("mailtmInboxes")
+      .withIndex("by_address", (q: any) => q.eq("address", address))
+      .unique();
+    if (!inbox) {
+      throw new Error(
+        `"${address}" is not a Mail.tm inbox. Only Mail.tm inboxes created in this demo can receive emails.`,
+      );
+    }
+  }
+}
+
 async function ensureDemoEmail(
   ctx: any,
   params: {
@@ -43,40 +61,27 @@ export const getConfig = query({
   },
 });
 
+// Hardcoded demo defaults — not changeable via the public API.
+const DEMO_DEFAULT_FROM = "ray@con.taskos.dev";
+const DEMO_DEFAULT_REPLY_TO = "ray@con.taskos.dev";
+
 export const setConfig = mutation({
   args: {
+    // Only non-sensitive, non-destructive settings are exposed.
+    // Secrets (autosendApiKey, webhookSecret) are set exclusively via envSetup.
+    // defaultFrom / defaultReplyTo are hardcoded.
     testMode: v.optional(v.boolean()),
-    defaultFrom: v.optional(v.string()),
-    defaultReplyTo: v.optional(v.string()),
     sandboxTo: v.optional(v.array(v.string())),
-    rateLimitRps: v.optional(v.number()),
-    retryDelaysMs: v.optional(v.array(v.number())),
-    maxAttempts: v.optional(v.number()),
-    sendBatchSize: v.optional(v.number()),
-    cleanupBatchSize: v.optional(v.number()),
-    cleanupOldEmailsMs: v.optional(v.number()),
-    cleanupAbandonedMs: v.optional(v.number()),
-    cleanupDeliveriesMs: v.optional(v.number()),
     providerCompatibilityMode: v.optional(v.union(v.literal("strict"), v.literal("lenient"))),
-    autosendBaseUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     return await autosend.setConfig(ctx, {
       config: {
         testMode: args.testMode,
-        defaultFrom: args.defaultFrom,
-        defaultReplyTo: args.defaultReplyTo,
+        defaultFrom: DEMO_DEFAULT_FROM,
+        defaultReplyTo: DEMO_DEFAULT_REPLY_TO,
         sandboxTo: args.sandboxTo,
-        rateLimitRps: args.rateLimitRps,
-        retryDelaysMs: args.retryDelaysMs,
-        maxAttempts: args.maxAttempts,
-        sendBatchSize: args.sendBatchSize,
-        cleanupBatchSize: args.cleanupBatchSize,
-        cleanupOldEmailsMs: args.cleanupOldEmailsMs,
-        cleanupAbandonedMs: args.cleanupAbandonedMs,
-        cleanupDeliveriesMs: args.cleanupDeliveriesMs,
         providerCompatibilityMode: args.providerCompatibilityMode,
-        autosendBaseUrl: args.autosendBaseUrl,
       },
     });
   },
@@ -103,6 +108,12 @@ export const sendEmail = mutation({
     unsubscribeGroupId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Validate all recipients are registered Mail.tm inboxes.
+    const allRecipients = [args.to];
+    if (args.cc) allRecipients.push(...args.cc.map((r) => r.email));
+    if (args.bcc) allRecipients.push(...args.bcc.map((r) => r.email));
+    await requireMailtmRecipients(ctx, allRecipients);
+
     const result = await autosend.sendEmail(ctx, {
       to: [args.to],
       toName: args.toName,
@@ -158,6 +169,12 @@ export const sendBulk = mutation({
     const recipients = Array.from(
       new Set(args.recipients.map((value) => value.trim()).filter(Boolean)),
     );
+
+    // Validate all recipients are registered Mail.tm inboxes.
+    const allRecipients = [...recipients];
+    if (args.cc) allRecipients.push(...args.cc.map((r) => r.email));
+    if (args.bcc) allRecipients.push(...args.bcc.map((r) => r.email));
+    await requireMailtmRecipients(ctx, allRecipients);
 
     const result = await autosend.sendBulk(ctx, {
       recipients,
@@ -313,5 +330,25 @@ export const cleanupOldDeliveries = action({
   },
   handler: async (ctx, args) => {
     return await autosend.cleanupOldDeliveries(ctx, args);
+  },
+});
+
+const DEMO_DATA_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+export const cleanupDemoData = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - DEMO_DATA_MAX_AGE_MS;
+
+    const oldEmails = await ctx.db
+      .query("demoEmails")
+      .withIndex("by_createdAt", (q) => q.lt("createdAt", cutoff))
+      .collect();
+
+    for (const email of oldEmails) {
+      await ctx.db.delete(email._id);
+    }
+
+    return { deletedDemoEmails: oldEmails.length };
   },
 });

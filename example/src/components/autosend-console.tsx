@@ -22,6 +22,9 @@ import { SetupView } from "./autosend-console/setup-view";
 
 type View = "send" | "inbox" | "ops" | "setup";
 
+const DEMO_DEFAULT_FROM = "ray@con.taskos.dev";
+const DEMO_DEFAULT_REPLY_TO = "ray@con.taskos.dev";
+
 // ---------------------------------------------------------------------------
 // Main console
 // ---------------------------------------------------------------------------
@@ -59,8 +62,6 @@ export default function AutoSendConsole() {
   const deleteInbox = useMutation(api.mailtm.deleteInbox);
 
   // Form state — setup
-  const [defaultFrom, setDefaultFrom] = useState("");
-  const [defaultReplyTo, setDefaultReplyTo] = useState("");
   const [sandboxTo, setSandboxTo] = useState("");
   const [testMode, setTestMode] = useState(false);
   const [providerCompatibilityMode, setProviderCompatibilityMode] = useState<
@@ -111,8 +112,6 @@ export default function AutoSendConsole() {
 
   useEffect(() => {
     if (!config || fromConfigHydrated) return;
-    setDefaultFrom(config.defaultFrom ?? "");
-    setDefaultReplyTo(config.defaultReplyTo ?? "");
     setSandboxTo(config.sandboxTo.join(", "));
     setTestMode(config.testMode);
     setProviderCompatibilityMode(config.providerCompatibilityMode);
@@ -208,7 +207,7 @@ export default function AutoSendConsole() {
       setTestMode(enabled);
       try {
         await setConfig({ testMode: enabled });
-        toast.success(enabled ? "Test mode ON \u2014 emails redirect to sandbox" : "Test mode OFF \u2014 emails go to real recipients");
+        toast.success(enabled ? "Test mode ON \u2014 emails redirect to sandbox" : "Test mode OFF");
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Failed to save test mode");
       }
@@ -219,20 +218,18 @@ export default function AutoSendConsole() {
   const onSaveConfig = useCallback(async () => {
     try {
       await setConfig({
-        defaultFrom: defaultFrom.trim() || undefined,
-        defaultReplyTo: defaultReplyTo.trim() || undefined,
+        testMode,
         sandboxTo: sandboxTo
           .split(",")
           .map((v) => v.trim())
           .filter(Boolean),
-        testMode,
         providerCompatibilityMode,
       });
       toast.success("Config saved");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save config");
     }
-  }, [setConfig, defaultFrom, defaultReplyTo, sandboxTo, testMode, providerCompatibilityMode]);
+  }, [setConfig, testMode, sandboxTo, providerCompatibilityMode]);
 
   const onQueueSingle = useCallback(async () => {
     if (!to.trim()) {
@@ -380,18 +377,6 @@ export default function AutoSendConsole() {
       setCleanupRunning(false);
     }
   }, [executeCleanupAbandoned]);
-
-  const onUpdateThreshold = useCallback(
-    async (field: string, value: number) => {
-      try {
-        await setConfig({ [field]: value } as any);
-        toast.success("Threshold updated");
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Failed to update threshold");
-      }
-    },
-    [setConfig],
-  );
 
   const onCleanupDeliveries = useCallback(async () => {
     setCleanupRunning(true);
@@ -653,6 +638,7 @@ export default function AutoSendConsole() {
             onQueueSingle={onQueueSingle}
             onQueueBulk={onQueueBulk}
             onProcessQueue={onProcessQueue}
+            onCreateInbox={onCreateInbox}
             processing={processing}
             demoEmails={demoEmails}
             emailCounts={emailCounts}
@@ -683,7 +669,6 @@ export default function AutoSendConsole() {
             onExecuteCleanupOld={onExecuteCleanupOld}
             onExecuteCleanupAbandoned={onExecuteCleanupAbandoned}
             onCleanupDeliveries={onCleanupDeliveries}
-            onUpdateThreshold={onUpdateThreshold}
             processing={processing}
             cleanupRunning={cleanupRunning}
             queueResult={queueResult}
@@ -700,10 +685,8 @@ export default function AutoSendConsole() {
           <SetupView
             config={config}
             inboxes={inboxes}
-            defaultFrom={defaultFrom}
-            setDefaultFrom={setDefaultFrom}
-            defaultReplyTo={defaultReplyTo}
-            setDefaultReplyTo={setDefaultReplyTo}
+            defaultFrom={DEMO_DEFAULT_FROM}
+            defaultReplyTo={DEMO_DEFAULT_REPLY_TO}
             sandboxTo={sandboxTo}
             setSandboxTo={setSandboxTo}
             testMode={testMode}

@@ -19,6 +19,9 @@ export const syncSecretsFromEnv = action({
       config: {
         autosendApiKey: autosendApiKey || undefined,
         webhookSecret: webhookSecret || undefined,
+        testMode: true,
+        defaultFrom: "ray@con.taskos.dev",
+        defaultReplyTo: "ray@con.taskos.dev",
       },
     });
 
