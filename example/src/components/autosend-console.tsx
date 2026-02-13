@@ -352,7 +352,7 @@ export default function AutoSendConsole() {
   }, [cleanupOldEmails, cleanupAbandonedEmails]);
 
   const onExecuteCleanupOld = useCallback(async () => {
-    if (!confirm("Delete old terminal emails older than 7 days? This cannot be undone.")) return;
+    if (!confirm("Delete old terminal emails? This cannot be undone.")) return;
     setCleanupRunning(true);
     try {
       const result = await executeCleanupOld({});
@@ -367,7 +367,7 @@ export default function AutoSendConsole() {
   }, [executeCleanupOld]);
 
   const onExecuteCleanupAbandoned = useCallback(async () => {
-    if (!confirm("Recover abandoned sending emails (stuck >15 min)? They will be re-queued.")) return;
+    if (!confirm("Recover abandoned sending emails? They will be re-queued.")) return;
     setCleanupRunning(true);
     try {
       const result = await executeCleanupAbandoned({});
@@ -380,6 +380,18 @@ export default function AutoSendConsole() {
       setCleanupRunning(false);
     }
   }, [executeCleanupAbandoned]);
+
+  const onUpdateThreshold = useCallback(
+    async (field: string, value: number) => {
+      try {
+        await setConfig({ [field]: value } as any);
+        toast.success("Threshold updated");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to update threshold");
+      }
+    },
+    [setConfig],
+  );
 
   const onCleanupDeliveries = useCallback(async () => {
     setCleanupRunning(true);
@@ -414,11 +426,12 @@ export default function AutoSendConsole() {
     setAttachments((prev) => [...prev, ...newItems]);
   }, []);
 
-  const onAddUrlAttachment = useCallback((filename: string, fileUrl: string, description?: string) => {
+  const onAddUrlAttachment = useCallback((filename: string, fileUrl: string, description?: string, contentType?: string) => {
     if (!filename.trim() || !fileUrl.trim()) return;
     setAttachments((prev) => [...prev, {
       filename: filename.trim(),
       fileUrl: fileUrl.trim(),
+      contentType: contentType?.trim() || undefined,
       description: description?.trim() || undefined,
     }]);
   }, []);
@@ -670,6 +683,7 @@ export default function AutoSendConsole() {
             onExecuteCleanupOld={onExecuteCleanupOld}
             onExecuteCleanupAbandoned={onExecuteCleanupAbandoned}
             onCleanupDeliveries={onCleanupDeliveries}
+            onUpdateThreshold={onUpdateThreshold}
             processing={processing}
             cleanupRunning={cleanupRunning}
             queueResult={queueResult}

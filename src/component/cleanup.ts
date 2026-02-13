@@ -10,10 +10,6 @@ import {
   deliveryCleanupResultValidator,
 } from "./types";
 
-const DEFAULT_OLD_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-const DEFAULT_ABANDONED_STALE_MS = 15 * 60 * 1000;
-const DEFAULT_DELIVERY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-
 // Safety cap: maximum number of batch iterations per action invocation to
 // avoid unbounded execution time. Each batch processes `batchSize` items.
 const MAX_LOOP_ITERATIONS = 20;
@@ -28,7 +24,7 @@ export const cleanupOldEmails = action({
   handler: async (ctx, args): Promise<CleanupResult> => {
     const globals = await ctx.runQuery(internal.config.getGlobalsInternal, {});
     const batchSize = Math.max(1, args.batchSize ?? globals.cleanupBatchSize);
-    const before = Date.now() - (args.olderThanMs ?? DEFAULT_OLD_RETENTION_MS);
+    const before = Date.now() - (args.olderThanMs ?? globals.cleanupOldEmailsMs);
 
     const allEmailIds: string[] = [];
     let totalDeleted = 0;
@@ -68,7 +64,7 @@ export const cleanupAbandonedEmails = action({
   handler: async (ctx, args): Promise<AbandonedCleanupResult> => {
     const globals = await ctx.runQuery(internal.config.getGlobalsInternal, {});
     const batchSize = Math.max(1, args.batchSize ?? globals.cleanupBatchSize);
-    const staleBefore = Date.now() - (args.staleAfterMs ?? DEFAULT_ABANDONED_STALE_MS);
+    const staleBefore = Date.now() - (args.staleAfterMs ?? globals.cleanupAbandonedMs);
 
     const allEmailIds: string[] = [];
     let totalRecovered = 0;
@@ -115,7 +111,7 @@ export const cleanupOldDeliveries = action({
   handler: async (ctx, args): Promise<DeliveryCleanupResult> => {
     const globals = await ctx.runQuery(internal.config.getGlobalsInternal, {});
     const batchSize = Math.max(1, args.batchSize ?? globals.cleanupBatchSize);
-    const before = Date.now() - (args.olderThanMs ?? DEFAULT_DELIVERY_RETENTION_MS);
+    const before = Date.now() - (args.olderThanMs ?? globals.cleanupDeliveriesMs);
 
     let totalDeleted = 0;
     let hasMore = true;

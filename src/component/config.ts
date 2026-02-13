@@ -14,6 +14,9 @@ export const DEFAULT_MAX_ATTEMPTS = 4;
 export const DEFAULT_RATE_LIMIT_RPS = 2;
 export const DEFAULT_SEND_BATCH_SIZE = 25;
 export const DEFAULT_CLEANUP_BATCH_SIZE = 100;
+export const DEFAULT_CLEANUP_OLD_EMAILS_MS = 7 * 24 * 60 * 60 * 1000;
+export const DEFAULT_CLEANUP_ABANDONED_MS = 15 * 60 * 1000;
+export const DEFAULT_CLEANUP_DELIVERIES_MS = 7 * 24 * 60 * 60 * 1000;
 export const DEFAULT_AUTOSEND_BASE_URL = "https://api.autosend.com";
 
 export type Globals = {
@@ -28,6 +31,9 @@ export type Globals = {
   maxAttempts?: number;
   sendBatchSize?: number;
   cleanupBatchSize?: number;
+  cleanupOldEmailsMs?: number;
+  cleanupAbandonedMs?: number;
+  cleanupDeliveriesMs?: number;
   providerCompatibilityMode?: "strict" | "lenient";
   autosendBaseUrl?: string;
 };
@@ -44,6 +50,9 @@ export type ResolvedGlobals = {
   maxAttempts: number;
   sendBatchSize: number;
   cleanupBatchSize: number;
+  cleanupOldEmailsMs: number;
+  cleanupAbandonedMs: number;
+  cleanupDeliveriesMs: number;
   providerCompatibilityMode: "strict" | "lenient";
   autosendBaseUrl: string;
 };
@@ -72,6 +81,18 @@ function withDefaults(globals: Globals): ResolvedGlobals {
       1,
       Math.floor(globals.cleanupBatchSize ?? DEFAULT_CLEANUP_BATCH_SIZE),
     ),
+    cleanupOldEmailsMs: Math.max(
+      0,
+      Math.floor(globals.cleanupOldEmailsMs ?? DEFAULT_CLEANUP_OLD_EMAILS_MS),
+    ),
+    cleanupAbandonedMs: Math.max(
+      0,
+      Math.floor(globals.cleanupAbandonedMs ?? DEFAULT_CLEANUP_ABANDONED_MS),
+    ),
+    cleanupDeliveriesMs: Math.max(
+      0,
+      Math.floor(globals.cleanupDeliveriesMs ?? DEFAULT_CLEANUP_DELIVERIES_MS),
+    ),
     providerCompatibilityMode: globals.providerCompatibilityMode ?? "strict",
     autosendBaseUrl: globals.autosendBaseUrl ?? DEFAULT_AUTOSEND_BASE_URL,
   };
@@ -97,6 +118,9 @@ async function readGlobals(db: DatabaseReader): Promise<Globals> {
     maxAttempts: record.maxAttempts,
     sendBatchSize: record.sendBatchSize,
     cleanupBatchSize: record.cleanupBatchSize,
+    cleanupOldEmailsMs: record.cleanupOldEmailsMs,
+    cleanupAbandonedMs: record.cleanupAbandonedMs,
+    cleanupDeliveriesMs: record.cleanupDeliveriesMs,
     providerCompatibilityMode: record.providerCompatibilityMode,
     autosendBaseUrl: record.autosendBaseUrl,
   };
@@ -121,6 +145,9 @@ export const getGlobalsInternal = internalQuery({
     maxAttempts: v.number(),
     sendBatchSize: v.number(),
     cleanupBatchSize: v.number(),
+    cleanupOldEmailsMs: v.number(),
+    cleanupAbandonedMs: v.number(),
+    cleanupDeliveriesMs: v.number(),
     providerCompatibilityMode: providerCompatibilityModeValidator,
     autosendBaseUrl: v.string(),
   }),
@@ -169,6 +196,9 @@ export const setConfig = mutation({
         maxAttempts: normalized.maxAttempts,
         sendBatchSize: normalized.sendBatchSize,
         cleanupBatchSize: normalized.cleanupBatchSize,
+        cleanupOldEmailsMs: normalized.cleanupOldEmailsMs,
+        cleanupAbandonedMs: normalized.cleanupAbandonedMs,
+        cleanupDeliveriesMs: normalized.cleanupDeliveriesMs,
         providerCompatibilityMode: normalized.providerCompatibilityMode,
         autosendBaseUrl: normalized.autosendBaseUrl,
       });
@@ -196,6 +226,12 @@ export const setConfig = mutation({
       patch.sendBatchSize = normalized.sendBatchSize;
     if (normalized.cleanupBatchSize !== undefined)
       patch.cleanupBatchSize = normalized.cleanupBatchSize;
+    if (normalized.cleanupOldEmailsMs !== undefined)
+      patch.cleanupOldEmailsMs = normalized.cleanupOldEmailsMs;
+    if (normalized.cleanupAbandonedMs !== undefined)
+      patch.cleanupAbandonedMs = normalized.cleanupAbandonedMs;
+    if (normalized.cleanupDeliveriesMs !== undefined)
+      patch.cleanupDeliveriesMs = normalized.cleanupDeliveriesMs;
     if (normalized.providerCompatibilityMode !== undefined) {
       patch.providerCompatibilityMode = normalized.providerCompatibilityMode;
     }
@@ -222,6 +258,9 @@ export const getConfig = query({
       maxAttempts: globals.maxAttempts,
       sendBatchSize: globals.sendBatchSize,
       cleanupBatchSize: globals.cleanupBatchSize,
+      cleanupOldEmailsMs: globals.cleanupOldEmailsMs,
+      cleanupAbandonedMs: globals.cleanupAbandonedMs,
+      cleanupDeliveriesMs: globals.cleanupDeliveriesMs,
       providerCompatibilityMode: globals.providerCompatibilityMode,
       autosendBaseUrl: globals.autosendBaseUrl,
       hasApiKey: Boolean(globals.autosendApiKey),

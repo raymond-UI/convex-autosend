@@ -129,7 +129,7 @@ export function SendView({
   attachments: AttachmentItem[];
   setAttachments: (v: AttachmentItem[]) => void;
   onAddFiles: (files: FileList) => void;
-  onAddUrlAttachment: (filename: string, fileUrl: string, description?: string) => void;
+  onAddUrlAttachment: (filename: string, fileUrl: string, description?: string, contentType?: string) => void;
   onQueueSingle: () => void;
   onQueueBulk: () => void;
   onProcessQueue: () => void;
@@ -673,6 +673,42 @@ export function SendView({
   );
 }
 
+const MIME_BY_EXT: Record<string, string> = {
+  pdf: "application/pdf",
+  zip: "application/zip",
+  gz: "application/gzip",
+  json: "application/json",
+  xml: "application/xml",
+  csv: "text/csv",
+  txt: "text/plain",
+  html: "text/html",
+  htm: "text/html",
+  css: "text/css",
+  js: "text/javascript",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  ico: "image/x-icon",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  mp4: "video/mp4",
+  webm: "video/webm",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+};
+
+function guessContentType(filename: string): string | undefined {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  return ext ? MIME_BY_EXT[ext] : undefined;
+}
+
 function AttachmentsSection({
   attachments,
   setAttachments,
@@ -682,12 +718,13 @@ function AttachmentsSection({
   attachments: AttachmentItem[];
   setAttachments: (v: AttachmentItem[]) => void;
   onAddFiles: (files: FileList) => void;
-  onAddUrlAttachment: (filename: string, fileUrl: string, description?: string) => void;
+  onAddUrlAttachment: (filename: string, fileUrl: string, description?: string, contentType?: string) => void;
 }) {
   const [showUrlForm, setShowUrlForm] = useState(false);
   const [urlFilename, setUrlFilename] = useState("");
   const [urlValue, setUrlValue] = useState("");
   const [urlDescription, setUrlDescription] = useState("");
+  const [urlContentType, setUrlContentType] = useState("");
 
   return (
     <div className="space-y-2">
@@ -745,7 +782,17 @@ function AttachmentsSection({
         <div className="space-y-2 rounded border border-zinc-200 dark:border-zinc-700 p-2.5">
           <Input
             value={urlFilename}
-            onChange={(e) => setUrlFilename(e.target.value)}
+            onChange={(e) => {
+              setUrlFilename(e.target.value);
+              const guessed = guessContentType(e.target.value);
+              if (guessed && !urlContentType) setUrlContentType(guessed);
+            }}
+            onBlur={() => {
+              if (!urlContentType) {
+                const guessed = guessContentType(urlFilename);
+                if (guessed) setUrlContentType(guessed);
+              }
+            }}
             placeholder="report.pdf"
             className="text-xs"
           />
@@ -754,6 +801,12 @@ function AttachmentsSection({
             onChange={(e) => setUrlValue(e.target.value)}
             placeholder="https://cdn.example.com/report.pdf"
             className="font-mono text-xs"
+          />
+          <Input
+            value={urlContentType}
+            onChange={(e) => setUrlContentType(e.target.value)}
+            placeholder="Content type (auto-detected, e.g. image/jpeg)"
+            className="text-xs"
           />
           <Input
             value={urlDescription}
@@ -770,10 +823,11 @@ function AttachmentsSection({
                 toast.error("Filename and URL are required");
                 return;
               }
-              onAddUrlAttachment(urlFilename, urlValue, urlDescription);
+              onAddUrlAttachment(urlFilename, urlValue, urlDescription, urlContentType);
               setUrlFilename("");
               setUrlValue("");
               setUrlDescription("");
+              setUrlContentType("");
               setShowUrlForm(false);
             }}
           >

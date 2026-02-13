@@ -153,6 +153,9 @@ export class AutoSend {
         maxAttempts?: number;
         sendBatchSize?: number;
         cleanupBatchSize?: number;
+        cleanupOldEmailsMs?: number;
+        cleanupAbandonedMs?: number;
+        cleanupDeliveriesMs?: number;
         providerCompatibilityMode?: "strict" | "lenient";
         autosendBaseUrl?: string;
       };
