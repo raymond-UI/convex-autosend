@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --port 3000",
-    "build": "npx convex deploy --cmd 'npx next build'",
+    "build": "npx convex deploy --cmd 'echo _generated: && ls convex/_generated/ && npx next build'",
     "start": "next start"
   },
   "dependencies": {
