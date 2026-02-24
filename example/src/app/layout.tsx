@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AutoSend Mission Control",
+  title: "Convex AutoSend Component Example",
   description:
     "End-to-end autosend demo with queue processing, webhook lifecycle, and Mail.tm disposable inboxes.",
 };

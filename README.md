@@ -1,6 +1,11 @@
 # @mzedstudio/autosend
 
+[![npm version](https://img.shields.io/npm/v/@mzedstudio/autosend)](https://www.npmjs.com/package/@mzedstudio/autosend)
+[![npm downloads](https://img.shields.io/npm/dw/@mzedstudio/autosend)](https://www.npmjs.com/package/@mzedstudio/autosend)
+
 A [Convex component](https://docs.convex.dev/components) for transactional email delivery on top of AutoSend, including queueing, retries, idempotency, webhook verification, and delivery lifecycle tracking.
+
+[Live Demo](https://convex-autosend.vercel.app/)
 
 ## Features
 

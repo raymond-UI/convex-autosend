@@ -521,10 +521,10 @@ export default function AutoSendConsole() {
               </div>
               <div>
                 <h1 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 leading-none">
-                  AutoSend
+                  Convex AutoSend
                 </h1>
                 <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-none mt-0.5">
-                  Mission Control
+                  Demo Console
                 </p>
               </div>
             </div>
