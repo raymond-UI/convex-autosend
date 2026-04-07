@@ -3,10 +3,11 @@ import { api } from "./_generated/api";
 
 const crons = cronJobs();
 
-// Process queued and retrying emails every 10 seconds.
+// Safety-net cron: emails are processed immediately on enqueue via scheduler,
+// so this only catches edge cases (e.g. retries whose delay has elapsed).
 crons.interval(
   "process email queue",
-  { seconds: 10 },
+  { minutes: 5 },
   api.autosendDemo.processQueue,
   {},
 );

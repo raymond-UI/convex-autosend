@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@mzedstudio/autosend':
-        specifier: ^0.1.0
-        version: 0.1.0(convex@1.31.7(react@19.2.4))
+        specifier: ^0.2.0
+        version: 0.2.0(convex@1.31.7(react@19.2.4))
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -384,8 +384,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@mzedstudio/autosend@0.1.0':
-    resolution: {integrity: sha512-XL6xPia6k7MlxIydA+SvxJY7pUOtU8fv8m/k031R/LdsBYRAhIu6iYgFOZGTEChwbJNHqVFMcXa67vj4HkOOOg==}
+  '@mzedstudio/autosend@0.2.0':
+    resolution: {integrity: sha512-SQYF5ceTj8R+SbE2nk7f5psVAbgGZUb0DRLUNkov3hb0czWRyXhGeSMZdl3YaJxjT2dAcvFYuxPR0Hs1b9ap6g==}
     peerDependencies:
       convex: ^1.31.7
 
@@ -1010,7 +1010,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@mzedstudio/autosend@0.1.0(convex@1.31.7(react@19.2.4))':
+  '@mzedstudio/autosend@0.2.0(convex@1.31.7(react@19.2.4))':
     dependencies:
       convex: 1.31.7(react@19.2.4)
 
