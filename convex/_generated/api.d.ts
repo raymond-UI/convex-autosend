@@ -161,6 +161,7 @@ export declare const components: {
           html?: string;
           idempotencyKeyPrefix?: string;
           metadata?: any;
+          recipientData?: any;
           recipients: Array<string>;
           replyTo?: string;
           replyToName?: string;

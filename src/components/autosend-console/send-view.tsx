@@ -48,6 +48,8 @@ export function SendView({
   setBulkRecipients,
   idempotencyPrefix,
   setIdempotencyPrefix,
+  recipientDataField,
+  setRecipientDataField,
   sendMode,
   setSendMode,
   composeMode,
@@ -100,6 +102,8 @@ export function SendView({
   setBulkRecipients: (v: string) => void;
   idempotencyPrefix: string;
   setIdempotencyPrefix: (v: string) => void;
+  recipientDataField: string;
+  setRecipientDataField: (v: string) => void;
   sendMode: "single" | "bulk";
   setSendMode: (v: "single" | "bulk") => void;
   composeMode: "content" | "template";
@@ -344,6 +348,49 @@ export function SendView({
                   placeholder="campaign-2026-02"
                   className="font-mono text-xs"
                 />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Per-Recipient Data (JSON)
+                  <span className="text-zinc-400 dark:text-zinc-500 ml-1">(optional)</span>
+                </Label>
+                <Textarea
+                  value={recipientDataField}
+                  onChange={(e) => setRecipientDataField(e.target.value)}
+                  placeholder={'{\n  "alice@example.com": { "name": "Alice" },\n  "bob@example.com": { "name": "Bob" }\n}'}
+                  rows={4}
+                  className="font-mono text-xs"
+                />
+                <div className="flex items-center gap-2">
+                  <p className="flex-1 text-[11px] text-zinc-400 dark:text-zinc-500">
+                    Use <code className="text-[10px] bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 rounded">{"{{key}}"}</code> placeholders in subject/HTML to personalize per recipient.
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-[11px] px-2 text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 shrink-0"
+                    onClick={() => {
+                      const recipients = bulkRecipients
+                        .split(/[\n,]/)
+                        .map((s) => s.trim())
+                        .filter(Boolean);
+                      if (recipients.length === 0) {
+                        toast.error("Select recipients first");
+                        return;
+                      }
+                      const sample: Record<string, { name: string; role: string }> = {};
+                      recipients.forEach((email, i) => {
+                        const local = email.split("@")[0] ?? `user-${i + 1}`;
+                        sample[email] = { name: `User ${i + 1}`, role: i === 0 ? "admin" : "member" };
+                      });
+                      setRecipientDataField(JSON.stringify(sample, null, 2));
+                      setSubject("Hello {{name}}");
+                      setHtml("<h2>Welcome, {{name}}</h2><p>Your role is <strong>{{role}}</strong>.</p>");
+                    }}
+                  >
+                    Sample data
+                  </Button>
+                </div>
               </div>
             </div>
           )}

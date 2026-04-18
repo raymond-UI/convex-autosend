@@ -78,6 +78,7 @@ export default function AutoSendConsole() {
   const [idempotencyKey, setIdempotencyKey] = useState("");
   const [bulkRecipients, setBulkRecipients] = useState("");
   const [idempotencyPrefix, setIdempotencyPrefix] = useState("");
+  const [recipientDataField, setRecipientDataField] = useState("");
   const [sendMode, setSendMode] = useState<"single" | "bulk">("single");
   const [composeMode, setComposeMode] = useState<"content" | "template">("content");
   const [templateId, setTemplateId] = useState("");
@@ -288,6 +289,10 @@ export default function AutoSendConsole() {
     if (composeMode === "template" && dynamicData.trim()) {
       try { parsedDynamic = JSON.parse(dynamicData); } catch { toast.error("Invalid Dynamic Data JSON"); return; }
     }
+    let parsedRecipientData: unknown;
+    if (recipientDataField.trim()) {
+      try { parsedRecipientData = JSON.parse(recipientDataField); } catch { toast.error("Invalid Recipient Data JSON"); return; }
+    }
     let parsedMetadata: unknown;
     if (emailMetadata.trim()) {
       try { parsedMetadata = JSON.parse(emailMetadata); } catch { toast.error("Invalid Metadata JSON"); return; }
@@ -295,6 +300,7 @@ export default function AutoSendConsole() {
     try {
       const result = await sendBulk({
         recipients,
+        recipientData: parsedRecipientData,
         subject: composeMode === "content" ? subject : undefined,
         html: composeMode === "content" ? html : undefined,
         templateId: composeMode === "template" && templateId.trim() ? templateId.trim() : undefined,
@@ -314,7 +320,7 @@ export default function AutoSendConsole() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Bulk queue failed");
     }
-  }, [sendBulk, bulkRecipients, subject, html, idempotencyPrefix, composeMode, templateId, dynamicData, fromOverride, fromName, replyToOverride, replyToName, ccField, bccField, unsubscribeGroupId, emailMetadata, attachments]);
+  }, [sendBulk, bulkRecipients, subject, html, idempotencyPrefix, recipientDataField, composeMode, templateId, dynamicData, fromOverride, fromName, replyToOverride, replyToName, ccField, bccField, unsubscribeGroupId, emailMetadata, attachments]);
 
   const onProcessQueue = useCallback(async () => {
     setProcessing(true);
@@ -605,6 +611,8 @@ export default function AutoSendConsole() {
             setBulkRecipients={setBulkRecipients}
             idempotencyPrefix={idempotencyPrefix}
             setIdempotencyPrefix={setIdempotencyPrefix}
+            recipientDataField={recipientDataField}
+            setRecipientDataField={setRecipientDataField}
             sendMode={sendMode}
             setSendMode={setSendMode}
             composeMode={composeMode}

@@ -149,6 +149,7 @@ export const sendEmail = mutation({
 export const sendBulk = mutation({
   args: {
     recipients: v.array(v.string()),
+    recipientData: v.optional(v.any()),
     from: v.optional(v.string()),
     fromName: v.optional(v.string()),
     replyTo: v.optional(v.string()),
@@ -178,6 +179,7 @@ export const sendBulk = mutation({
 
     const result = await autosend.sendBulk(ctx, {
       recipients,
+      recipientData: args.recipientData,
       from: args.from,
       fromName: args.fromName,
       replyTo: args.replyTo,
