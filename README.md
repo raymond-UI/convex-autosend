@@ -1,9 +1,9 @@
-# AutoSend Mission Control Example
+# AutoSend Demo Console
 
-This example mirrors the `llm-cache` demo stack:
+A standalone demo app for the [`@mzedstudio/autosend`](https://www.npmjs.com/package/@mzedstudio/autosend) Convex component.
 
-- Next.js App Router frontend (`example/src`)
-- Convex backend (`example/convex`)
+- Next.js App Router frontend (`src/`)
+- Convex backend (`convex/`)
 - `@mzedstudio/autosend` component mounted in `convex.config.ts`
 - Mail.tm integration for disposable test inboxes
 
@@ -11,22 +11,18 @@ This example mirrors the `llm-cache` demo stack:
 
 1. Create multiple Mail.tm inboxes from the UI.
 2. Queue single and bulk emails via `AutoSend` client wrappers.
-3. Process queue batches and inspect retry/sent/failed stats.
-4. Inspect lifecycle statuses (`queued`, `sending`, `retrying`, `sent`, `failed`, `canceled`).
-5. Read inbound mailbox messages in-app (sync + full message fetch).
-6. Manage component config (`testMode`, defaults, sandbox list, provider mode).
+3. Per-recipient personalization with `{{placeholder}}` interpolation in bulk sends.
+4. Process queue batches and inspect retry/sent/failed stats.
+5. Inspect lifecycle statuses (`queued`, `sending`, `retrying`, `sent`, `failed`, `canceled`).
+6. Read inbound mailbox messages in-app (sync + full message fetch).
+7. Manage component config (`testMode`, defaults, sandbox list, provider mode).
 
 ## Run
 
-From package root (`/autosend`):
-
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
-
-- Convex backend: `convex dev --typecheck-components`
-- Next frontend: `cd example && npx next dev --port 3000`
 
 ## Environment
 
@@ -37,7 +33,7 @@ npx convex env set AUTOSEND_API_KEY <api-key>
 npx convex env set AUTOSEND_WEBHOOK_SECRET <webhook-secret>
 ```
 
-Set frontend Convex URL in `example/.env.local`:
+Set frontend Convex URL in `.env.local`:
 
 ```bash
 NEXT_PUBLIC_CONVEX_URL=<your-convex-url>
@@ -48,3 +44,4 @@ NEXT_PUBLIC_CONVEX_URL=<your-convex-url>
 - Mail.tm usage is rate-limited and intended for testing/demo inboxes.
 - Mail.tm calls are executed server-side in Convex actions.
 - Webhook route remains `/webhooks/autosend` via `registerRoutes`.
+- Component source lives at [autosendhq/autosend-convex](https://github.com/autosendhq/autosend-convex).
